@@ -26,6 +26,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
       - run: node scripts/release-guard.mjs android validate
       - run: npm ci
       - name: Prepare release signing

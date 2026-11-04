@@ -2,13 +2,7 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 // @ts-expect-error Server-only module.
-import {
-    BACKUP_INTERVAL,
-    createServerBackups,
-    retentionCutoff,
-    scheduleServerBackups,
-    validRetentionMonths
-} from '../scripts/server-backups.mjs';
+import {BACKUP_INTERVAL, createServerBackups, retentionCutoff, scheduleServerBackups, validRetentionMonths} from '../scripts/server-backups.mjs';
 
 const directories: string[] = [];
 afterEach(async () => {
