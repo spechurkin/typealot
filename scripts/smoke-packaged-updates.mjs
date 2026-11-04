@@ -50,6 +50,9 @@ try {
     await page.getByLabel('Заголовок заметки').fill('Packaged update verification');
     await expect(page.getByRole('status').filter({hasText: 'Сохранено'})).toBeVisible();
     console.log('Packaged desktop executable: startup, updater IPC and workspace saving passed. Remote installation was not performed.');
+} catch (error) {
+    console.error('Packaged app output:', logs);
+    throw error;
 } finally {
     await browser?.close();
     child.kill();

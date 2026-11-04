@@ -25,8 +25,8 @@ jobs:
           - { runner: ubuntu-24.04-arm, platform: linux, flag: linux, arch: arm64 }
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -54,7 +54,7 @@ jobs:
           test -f /usr/share/icons/hicolor/512x512/apps/typealot.png
           sudo apt-get remove -y typealot
           test ! -f /usr/share/applications/app.typealot.editor.desktop
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: Typealot-${{ matrix.check_only && 'check' || 'release' }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.runner }}
           if-no-files-found: error
@@ -69,15 +69,15 @@ jobs:
   publish:
     if: github.event_name == 'push'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           pattern: Typealot-release-*
           path: release/desktop
@@ -90,8 +90,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh release view desktop-latest >/dev/null 2>&1; then
-            gh release create desktop-latest --title 'Desktop application updates' --notes 'Windows, macOS and Linux builds.' --prerelease --target '${{ github.sha }}'
+            gh release create desktop-latest --title 'Desktop application updates' --notes 'Windows, macOS and Linux builds.' --target '${{ github.sha }}'
           fi
+          gh release edit desktop-latest --prerelease=false
           shopt -s nullglob
           assets=(release/desktop/*.exe release/desktop/*.dmg release/desktop/*.zip release/desktop/*.deb release/desktop/*.AppImage release/desktop/*.blockmap)
           gh release upload desktop-latest "${assets[@]}" --clobber

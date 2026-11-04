@@ -8,6 +8,7 @@ const {desktopTarget} = require('./desktop-targets.cjs');
 const {verifyDesktopBinary} = require('./verify-desktop-binary.cjs');
 
 async function main() {
+    if (!process.env.CSC_LINK?.trim()) delete process.env.CSC_LINK;
     const target = desktopTarget(process.argv.slice(2));
     const {releaseUrl} = await import('../shared/updates.mjs');
     const url = releaseUrl(process.env.TYPEALOT_DESKTOP_UPDATE_URL || 'https://github.com/spechurkin/typealot/releases/download/desktop-latest/');
@@ -20,7 +21,7 @@ async function main() {
         for (const name of ['dist', 'electron', 'shared', 'scripts', 'src/locales', 'package.json', 'package-lock.json']) {
             await fs.cp(path.join(root, name), path.join(snapshot, name), {recursive: true});
         }
-        await fs.symlink(path.join(root, 'node_modules'), path.join(snapshot, 'node_modules'), 'junction');
+        await fs.cp(path.join(root, 'node_modules'), path.join(snapshot, 'node_modules'), {recursive: true});
         const installerInclude = target.platform !== 'win32' ? undefined : await prepareUpgradeInclude(path.join(snapshot, 'nsis'), path.join(root, 'build/installer.nsh'));
         await build({
             targets: target.targets,
