@@ -1,0 +1,114 @@
+apply plugin: 'com.android.application'
+
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file('signing.properties')
+if (signingPropertiesFile.isFile()) {
+    signingPropertiesFile.withReader('UTF-8') { signingProperties.load(it) }
+}
+def signingFields = [
+    storeFile: 'ANDROID_KEYSTORE_PATH',
+    storePassword: 'ANDROID_KEYSTORE_PASSWORD',
+    keyAlias: 'ANDROID_KEY_ALIAS',
+    keyPassword: 'ANDROID_KEY_PASSWORD'
+]
+def useSigningEnvironment = signingFields.values().any { System.getenv(it) != null }
+def releaseSigning = signingFields.collectEntries { property, variable ->
+    [(property): useSigningEnvironment ? System.getenv(variable) : signingProperties.getProperty(property)]
+}
+def releaseKeystore = releaseSigning.storeFile ? rootProject.file(releaseSigning.storeFile) : null
+def validateReleaseSigning = tasks.register('validateReleaseSigning') {
+    doLast {
+        def missing = signingFields.findAll { property, variable ->
+            !releaseSigning[property]?.trim()
+        }.collect { property, variable -> useSigningEnvironment ? variable : property }
+        if (missing) {
+            throw new GradleException('Release signing is required. Missing: ' + missing.join(', ') +
+                '. Fill android/signing.properties (see signing.properties.example), or set all four ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD environment variables.')
+        }
+        if (!releaseKeystore.isFile()) {
+            throw new GradleException('Release keystore not found. Check storeFile in android/signing.properties or ANDROID_KEYSTORE_PATH. Relative paths start at android/.')
+        }
+    }
+}
+
+android {
+    namespace "app.typealot.editor"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "app.typealot.editor"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode Integer.parseInt(providers.gradleProperty("typealotVersionCode").getOrElse("1"))
+        versionName new groovy.json.JsonSlurper().parse(rootProject.file("../package.json")).version
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            storeFile releaseKeystore
+            storePassword releaseSigning.storePassword
+            keyAlias releaseSigning.keyAlias
+            keyPassword releaseSigning.keyPassword
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == 'preReleaseBuild' || name == 'validateSigningRelease') {
+        dependsOn validateReleaseSigning
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.coordinatorlayout
+    implementation libs.androidx.core.splashscreen
+    implementation project(':capacitor-android')
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+def typealotRoot = rootProject.projectDir.parentFile
+def prepareWebAssets = tasks.register('prepareWebAssets', Exec) {
+    workingDir typealotRoot
+    inputs.files(fileTree(new File(typealotRoot, 'src')), fileTree(new File(typealotRoot, 'shared')), fileTree(new File(typealotRoot, 'public')), new File(typealotRoot, 'index.html'), new File(typealotRoot, 'package.json'), new File(typealotRoot, 'vite.config.ts'), new File(typealotRoot, 'package-lock.json'), new File(typealotRoot, 'capacitor.config.ts'))
+    inputs.property('appUpdateManifest', System.getenv('TYPEALOT_APP_UPDATE_URL') ?: 'https://github.com/spechurkin/typealot/releases/download/android-latest/apps.json')
+    outputs.dir(new File(projectDir, 'src/main/assets/public'))
+    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+        commandLine 'cmd', '/c', 'npm', 'run', 'android:assets'
+    } else {
+        commandLine 'npm', 'run', 'android:assets'
+    }
+}
+tasks.named('preBuild').configure { dependsOn prepareWebAssets }
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception ignored) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

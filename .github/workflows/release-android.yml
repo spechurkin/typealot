@@ -1,0 +1,62 @@
+name: Release Android application
+on:
+  push:
+    tags: [ 'v*' ]
+permissions:
+  contents: write
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_VERSION_CODE: ${{ vars.ANDROID_VERSION_CODE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - run: node scripts/release-guard.mjs android validate
+      - run: npm ci
+      - name: Prepare release signing
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          for variable in KEYSTORE ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!variable}" ]; then
+              echo "::error::Missing Android signing secret: $variable (KEYSTORE comes from ANDROID_KEYSTORE_BASE64)"
+              exit 1
+            fi
+          done
+          test -n "$ANDROID_VERSION_CODE"
+          umask 077
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/typealot-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/typealot-release.jks" >> "$GITHUB_ENV"
+      - run: npm run android:sync
+      - run: chmod +x android/gradlew && cd android && ./gradlew assembleRelease -PtypealotVersionCode="$ANDROID_VERSION_CODE"
+      - name: Verify APK signature
+        run: |
+          apksigner=$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)
+          test -n "$apksigner"
+          "$apksigner" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
+      - run: node scripts/android-release.mjs
+      - run: node scripts/release-guard.mjs android publish
+      - name: Publish APK before manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view android-latest || gh release create android-latest --title 'Android application updates' --notes 'Independent Android update channel.' --prerelease --target "$GITHUB_SHA"
+          gh release upload android-latest release/android/*.apk --clobber
+          gh release upload android-latest release/android/apps.json --clobber
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/typealot-release.jks"

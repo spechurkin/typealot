@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webview_update_title">Update Android System WebView</string>
+    <string name="webview_update_message">The editor requires Android System WebView %1$d or later. Update the System
+        WebView through the app store and reopen Typealot. Your notes will be saved.
+    </string>
+    <string name="webview_settings">WebView Settings</string>
+</resources>

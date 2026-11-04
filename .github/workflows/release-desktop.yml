@@ -1,0 +1,96 @@
+name: Release desktop application
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: ${{ matrix.runner }} / ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, platform: win32, flag: win, arch: ia32 }
+          - { runner: windows-latest, platform: win32, flag: win, arch: x64 }
+          - { runner: macos-15-intel, platform: darwin, flag: mac, arch: x64 }
+          - { runner: macos-15, platform: darwin, flag: mac, arch: arm64 }
+          - { runner: macos-26-intel, platform: darwin, flag: mac, arch: x64, check_only: true }
+          - { runner: macos-26, platform: darwin, flag: mac, arch: arm64, check_only: true }
+          - { runner: ubuntu-24.04, platform: linux, flag: linux, arch: x64 }
+          - { runner: ubuntu-24.04-arm, platform: linux, flag: linux, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: node scripts/release-guard.mjs desktop validate
+        if: github.event_name == 'push'
+      - run: npm ci
+      - run: npm run release:desktop -- --${{ matrix.flag }} --${{ matrix.arch }}
+        env:
+          CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.MAC_CSC_LINK || matrix.platform == 'win32' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.MAC_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.CSC_KEY_PASSWORD || '' }}
+      - name: Verify packaged macOS startup and saving
+        if: matrix.platform == 'darwin'
+        run: node scripts/smoke-packaged-updates.mjs
+        env:
+          TYPEALOT_DESKTOP_EXECUTABLE: release/desktop/darwin-${{ matrix.arch }}/mac${{ matrix.arch == 'arm64' && '-arm64' || '' }}/Typealot.app/Contents/MacOS/Typealot
+      - name: Verify Ubuntu menu registration
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y desktop-file-utils ./release/desktop/linux-${{ matrix.arch }}/*.deb
+          desktop-file-validate /usr/share/applications/app.typealot.editor.desktop
+          grep -Fx 'Name=Typealot' /usr/share/applications/app.typealot.editor.desktop
+          grep -Fx 'Exec=/opt/Typealot/typealot %U' /usr/share/applications/app.typealot.editor.desktop
+          test -x /opt/Typealot/typealot
+          test -f /usr/share/icons/hicolor/512x512/apps/typealot.png
+          sudo apt-get remove -y typealot
+          test ! -f /usr/share/applications/app.typealot.editor.desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Typealot-${{ matrix.check_only && 'check' || 'release' }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.runner }}
+          if-no-files-found: error
+          path: |
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.exe
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.dmg
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.zip
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.deb
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.AppImage
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.blockmap
+            release/desktop/${{ matrix.platform }}-${{ matrix.arch }}/*.yml
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: Typealot-release-*
+          path: release/desktop
+          merge-multiple: true
+      - run: node scripts/release-guard.mjs desktop publish
+      - name: Publish installers before metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view desktop-latest >/dev/null 2>&1; then
+            gh release create desktop-latest --title 'Desktop application updates' --notes 'Windows, macOS and Linux builds.' --prerelease --target '${{ github.sha }}'
+          fi
+          shopt -s nullglob
+          assets=(release/desktop/*.exe release/desktop/*.dmg release/desktop/*.zip release/desktop/*.deb release/desktop/*.AppImage release/desktop/*.blockmap)
+          gh release upload desktop-latest "${assets[@]}" --clobber
+          gh release upload desktop-latest release/desktop/*.yml --clobber

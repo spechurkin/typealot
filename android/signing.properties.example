@@ -1,0 +1,7 @@
+# Copy to signing.properties and fill locally. Paths are relative to android/.
+# Use forward slashes in Windows paths (for example C:/Keys/typealot-release.jks).
+# Java properties escaping applies: write a literal backslash as \\.
+storeFile=keystores/typealot-release.jks
+storePassword=
+keyAlias=typealot
+keyPassword=

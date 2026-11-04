@@ -1,0 +1,52 @@
+import {expect, test} from '@playwright/test';
+
+test('English and Russian UI persist without translating user documents', async ({page}) => {
+    await page.goto('/');
+    await expect(page.getByLabel('Заголовок заметки')).toBeVisible();
+    await page.getByLabel('Заголовок заметки').fill('Настройки');
+    await page.getByRole('navigation').getByRole('button', {name: 'Настройки', exact: true}).click();
+    await page.getByLabel('Язык интерфейса', {exact: true}).selectOption('en');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+    await expect(page.getByRole('heading', {name: 'Settings', exact: true})).toBeVisible();
+    await expect(page.getByLabel('Administration', {exact: true})).toBeVisible();
+    await page.getByRole('button', {name: 'Notes', exact: true}).click();
+    await expect(page.getByLabel('Note title')).toHaveValue('Настройки');
+    await expect(page.getByLabel('Note content')).toContainText('Начните с мысли');
+    const ribbon = page.getByRole('toolbar', {name: 'Formatting', exact: true});
+    await ribbon.getByLabel('Block type', {exact: true}).click();
+    await expect(ribbon.getByRole('button', {name: 'Heading 2', exact: true})).toBeVisible();
+    await page.keyboard.press('Escape');
+    const doc = page.getByLabel('Note content');
+    await doc.click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.press('Enter');
+    await page.keyboard.insertText('/heading');
+    await expect(page.getByLabel('Quick insert')).toContainText('Heading 2');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.header-actions [role=status]')).toHaveText('Saved');
+    await page.reload();
+    await expect(page.getByLabel('Note title')).toHaveValue('Настройки');
+    await page.getByRole('button', {name: 'Settings', exact: true}).click();
+    await page.screenshot({path: 'test-results/language-en-settings.png'});
+    await page.getByLabel('Interface language', {exact: true}).selectOption('ru');
+    await expect(page.getByRole('heading', {name: 'Настройки', exact: true})).toBeVisible();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+    await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Настройки');
+});
+
+test('key-like user titles remain literal and dynamic folder labels use parameters', async ({page}) => {
+    await page.goto('/');
+    await page.getByLabel('Заголовок заметки').fill('nav.settings');
+    await page.getByLabel('Создать папку', {exact: true}).click();
+    await page.getByLabel('Название', {exact: true}).fill('nav.settings');
+    await page.getByRole('button', {name: 'Сохранить', exact: true}).click();
+    await page.getByRole('navigation').getByRole('button', {name: 'Настройки', exact: true}).click();
+    await page.getByLabel('Язык интерфейса', {exact: true}).selectOption('en');
+    await page.getByRole('navigation').getByRole('button', {name: 'Notes', exact: true}).click();
+    await expect(page.getByLabel('Note title')).toHaveValue('nav.settings');
+    await expect(page.getByLabel('Folder actions: nav.settings', {exact: true})).toBeVisible();
+    await expect(page.getByLabel('Create note in nav.settings', {exact: true})).toBeVisible();
+    await page.getByLabel('Folder actions: nav.settings', {exact: true}).click();
+    await expect(page.getByRole('dialog')).toContainText('Move folder');
+});

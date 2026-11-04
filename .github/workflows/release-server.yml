@@ -1,0 +1,29 @@
+name: Release synchronization server
+on:
+  push:
+    tags: [ 'v*' ]
+permissions:
+  contents: write
+concurrency:
+  group: release-server
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: node scripts/release-guard.mjs server validate
+      - run: npm ci
+      - run: npm run release:server
+      - run: node scripts/release-guard.mjs server publish
+      - name: Publish server package before manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view server-latest || gh release create server-latest --title 'Server updates' --notes 'Independent synchronization server update channel.' --prerelease --target "$GITHUB_SHA"
+          gh release upload server-latest release/server/*.json.gz --clobber
+          gh release upload server-latest release/server/server.json --clobber
