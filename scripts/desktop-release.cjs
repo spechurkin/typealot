@@ -30,7 +30,7 @@ async function main() {
                 extraMetadata: desktopMetadata,
                 artifactName: 'Typealot_${os}_${version}_${arch}.${ext}',
                 npmRebuild: false,
-                electronDist: target.useLocalElectron ? path.dirname(require('electron')) : undefined,
+                electronDist: target.useLocalElectron ? path.join(path.dirname(require.resolve('electron/package.json')), 'dist') : undefined,
                 directories: {
                     app: snapshot,
                     output: path.resolve(process.env.TYPEALOT_DESKTOP_OUTPUT || path.join(release, 'desktop', target.output))

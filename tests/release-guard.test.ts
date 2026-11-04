@@ -46,3 +46,12 @@ it('rejects a newer Android version with a reused installation versionCode', asy
         env: {ANDROID_VERSION_CODE: '6'}
     })).resolves.toBeUndefined();
 });
+it('skips uploads of an already published channel when resuming a partial release, but rejects downgrades', async () => {
+    for (const channel of ['server', 'android', 'desktop']) {
+        const current = channel === 'server' ? pkg.serverVersion : pkg.version;
+        const manifest = channel === 'desktop' ? `version: ${current}\n` : JSON.stringify(channel === 'android' ? {android: {version: current, versionCode: 1}} : {version: current});
+        const options = {pkg, tag: 'v1.2.3', skipPublished: true, request: async () => new Response(manifest)};
+        await expect(guardRelease(channel, 'publish', options)).resolves.toBe(false);
+        await expect(guardRelease(channel, 'publish', {...options, pkg: {version: '1.0.0', serverVersion: '0.1.0'}, tag: 'v1.0.0'})).rejects.toThrow('Refusing to replace');
+    }
+});

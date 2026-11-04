@@ -83,7 +83,9 @@ jobs:
           path: release/desktop
           merge-multiple: true
       - run: node scripts/release-guard.mjs desktop publish
+        id: release_guard
       - name: Publish installers before metadata
+        if: steps.release_guard.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

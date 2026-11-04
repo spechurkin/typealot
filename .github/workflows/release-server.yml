@@ -20,7 +20,9 @@ jobs:
       - run: npm ci
       - run: npm run release:server
       - run: node scripts/release-guard.mjs server publish
+        id: release_guard
       - name: Publish server package before manifest
+        if: steps.release_guard.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

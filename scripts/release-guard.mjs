@@ -1,4 +1,4 @@
-import {readFile} from 'node:fs/promises';
+import {appendFile, readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {newerVersion, releaseUrl} from '../shared/updates.mjs';
@@ -12,7 +12,7 @@ export function assertNewRelease(candidate, published) {
     if (!newerVersion(candidate, published)) throw Error(`Refusing to replace published version ${published} with ${candidate}. Increase the corresponding version in package.json.`);
 }
 
-export async function guardRelease(channel, phase, {pkg, tag, request = fetch, env = process.env} = {}) {
+export async function guardRelease(channel, phase, {pkg, tag, request = fetch, env = process.env, skipPublished = false} = {}) {
     validateReleaseTag(tag, pkg);
     const bases = {
         desktop: env.TYPEALOT_DESKTOP_UPDATE_URL || 'https://github.com/spechurkin/typealot/releases/download/desktop-latest/',
@@ -28,7 +28,9 @@ export async function guardRelease(channel, phase, {pkg, tag, request = fetch, e
     if (text.length > 65536) throw Error('Release manifest too large');
     const published = channel === 'desktop' ? text.match(/^version:\s*['"]?([0-9]+\.[0-9]+\.[0-9]+)['"]?\s*$/m)?.[1] : channel === 'android' ? JSON.parse(text).android?.version : JSON.parse(text).version;
     if (!newerVersion(published, '0.0.0')) throw Error('Invalid published release version');
-    assertNewRelease(channel === 'server' ? pkg.serverVersion : pkg.version, published);
+    const candidate = channel === 'server' ? pkg.serverVersion : pkg.version;
+    if (skipPublished && candidate === published) return false;
+    assertNewRelease(candidate, published);
     if (channel === 'android') {
         const previousCode = JSON.parse(text).android?.versionCode;
         const nextCode = Number(env.ANDROID_VERSION_CODE);
@@ -39,7 +41,10 @@ export async function guardRelease(channel, phase, {pkg, tag, request = fetch, e
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-    guardRelease(process.argv[2], process.argv[3], {pkg, tag: process.env.GITHUB_REF_NAME}).catch(error => {
+    guardRelease(process.argv[2], process.argv[3], {pkg, tag: process.env.GITHUB_REF_NAME, skipPublished: true}).then(async result => {
+        if (result === false) console.log('This channel version is already published; skipping uploads.');
+        if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `publish=${result !== false}\n`);
+    }).catch(error => {
         console.error(error.message);
         process.exitCode = 1;
     });

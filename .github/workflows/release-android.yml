@@ -53,7 +53,9 @@ jobs:
           "$apksigner" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
       - run: node scripts/android-release.mjs
       - run: node scripts/release-guard.mjs android publish
+        id: release_guard
       - name: Publish APK before manifest
+        if: steps.release_guard.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
