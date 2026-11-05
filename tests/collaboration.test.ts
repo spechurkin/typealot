@@ -77,7 +77,11 @@ describe('file-scoped synchronization', () => {
         expect(mergeWorkspaces(undefined, local, remote).conflicts).toHaveLength(0);
         expect(mergeWorkspaces(base, local, remote).conflicts.map(file => file.id)).toEqual(['welcome']);
         remote.notes = [];
-        expect(mergeWorkspaces(base, local, remote).conflicts).toHaveLength(1);
+        const deleted = mergeWorkspaces(base, local, remote);
+        expect(deleted.conflicts).toHaveLength(1);
+        expect(deleted.conflicts[0].local).toMatchObject({title: 'local'});
+        expect(deleted.conflicts[0].remote).toBeUndefined();
+        expect(deleted.workspace.notes[0].title).toBe('local');
     });
     it('applies independent canvas property edits without replacing the other user changes', () => {
         const base = initialWorkspace().boards[0], left = structuredClone(base), right = structuredClone(base);
@@ -96,6 +100,52 @@ describe('file-scoped synchronization', () => {
                 upsert: [{id: 'card', changes: [{path: ['__proto__', 'polluted'], value: true}]}]
             }, edges: {remove: [], upsert: []}
         })).toThrow();
+    });
+    it('merges independent offline canvas fields and stops on overlapping changes', () => {
+        const base = initialWorkspace(), local = structuredClone(base), remote = structuredClone(base);
+        local.boards[0].nodes[0].position.x = 200;
+        remote.boards[0].nodes[0].position.y = 400;
+        const independent = mergeWorkspaces(base, local, remote);
+        expect(independent.conflicts).toEqual([]);
+        expect(independent.workspace.boards[0].nodes[0].position).toEqual({x: 200, y: 400});
+        remote.boards[0].nodes[0].position.x = 500;
+        const conflicting = mergeWorkspaces(base, local, remote);
+        expect(conflicting.conflicts).toHaveLength(1);
+        expect(conflicting.conflicts[0]).toMatchObject({
+            kind: 'boards',
+            local: local.boards[0],
+            remote: remote.boards[0]
+        });
+    });
+    it('detects edit/delete conflicts in both directions for all file types', () => {
+        const base = initialWorkspace();
+        base.attachments.push({id: 'file', name: 'old.txt', mime: 'text/plain', data: 'data:text/plain;base64,b2xk'});
+        const edited = structuredClone(base), deleted = structuredClone(base);
+        edited.notes[0].title = 'Edited note';
+        edited.folders[0].name = 'Edited folder';
+        edited.boards[0].title = 'Edited board';
+        edited.attachments[0].data = 'data:text/plain;base64,bmV3';
+        deleted.notes = [];
+        deleted.folders = [];
+        deleted.boards = [];
+        deleted.attachments = [];
+        for (const [local, remote] of [[edited, deleted], [deleted, edited]]) {
+            const result = mergeWorkspaces(base, local, remote);
+            expect(result.conflicts.map(file => file.kind || 'notes').sort()).toEqual(['attachments', 'boards', 'folders', 'notes']);
+        }
+    });
+    it('applies server deletions to unchanged files despite local canvas state and note timestamps', () => {
+        const base = initialWorkspace(), local = structuredClone(base), remote = structuredClone(base);
+        local.boards[0].nodes[0].selected = true;
+        local.boards[0].nodes[0].measured = {width: 300, height: 200};
+        local.boards[0].viewport = {x: 200, y: 400, zoom: 2};
+        local.notes[0].updatedAt++;
+        remote.notes = [];
+        remote.boards = [];
+        const result = mergeWorkspaces(base, local, remote);
+        expect(result.conflicts).toEqual([]);
+        expect(result.workspace.notes).toEqual([]);
+        expect(result.workspace.boards).toEqual([]);
     });
     it('labels cursors with an unprefixed handle and falls back to the name', () => {
         expect(cursorName({name: 'Name', handle: ' @Alias ', show: true})).toBe('Alias');

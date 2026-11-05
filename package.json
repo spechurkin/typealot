@@ -1,6 +1,6 @@
 {
   "name": "typealot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -71,5 +71,5 @@
     "vite": "^6.0.0",
     "vitest": "^3.0.0"
   },
-  "serverVersion": "0.1.0"
+  "serverVersion": "1.0.1"
 }

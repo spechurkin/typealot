@@ -1,5 +1,5 @@
-import {isFolderDrag, draggedFolder, startFolderDrag, endFolderDrag} from './folder-drag';
-import {startNoteDrag, endNoteDrag, isNoteDrag, draggedNote, folderNotes, moveNote} from './note-drag';
+import {draggedFolder, endFolderDrag, isFolderDrag, startFolderDrag} from './folder-drag';
+import {draggedNote, endNoteDrag, folderNotes, isNoteDrag, moveNote, startNoteDrag} from './note-drag';
 import UpdateNotice from './UpdateNotice';
 import SettingsPage from './SettingsPage';
 import {
@@ -55,6 +55,25 @@ import {AttachmentContext, prepareAttachment, renameAttachment, splitFilename} f
 import {hashtagsIn, matchesHashtag} from './hashtags';
 
 type Section = 'notes' | 'boards' | 'search' | 'attachments' | 'settings';
+type Navigation = { section: Section; active: string; boardId: string; query: string; read: boolean };
+const defaultNavigation: Navigation = {section: 'notes', active: '', boardId: '', query: '', read: false};
+
+function loadNavigation(): Navigation {
+    try {
+        const saved = JSON.parse(localStorage.getItem('typealot.navigation') || 'null');
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return defaultNavigation;
+        return {
+            section: ['notes', 'boards', 'search', 'attachments', 'settings'].includes(saved.section) ? saved.section : 'notes',
+            active: typeof saved.active === 'string' ? saved.active : '',
+            boardId: typeof saved.boardId === 'string' ? saved.boardId : '',
+            query: typeof saved.query === 'string' ? saved.query : '',
+            read: saved.read === true
+        };
+    } catch {
+        return defaultNavigation;
+    }
+}
+
 export default function App() {
     const language = useLanguage();
     usePopovers();
@@ -68,16 +87,31 @@ export default function App() {
         left: number;
         top: number
     } | null>(null);
-    const [section, setSection] = useState<Section>('notes');
-    const [active, setActive] = useState('');
-    const [boardId, setBoardId] = useState('');
-    const [read, setRead] = useState(false);
+    const [savedNavigation] = useState(loadNavigation);
+    const [section, setSection] = useState<Section>(savedNavigation.section);
+    const [active, setActive] = useState(savedNavigation.active);
+    const [boardId, setBoardId] = useState(savedNavigation.boardId);
+    const [read, setRead] = useState(savedNavigation.read);
     const [status, setStatus] = useState<TranslationKey>('storage.loading');
     const [saveError, setSaveError] = useState<DisplayError>('');
     const [loadError, setLoadError] = useState<DisplayError>('');
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useState(savedNavigation.query);
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+    const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+        try {
+            const saved: unknown = JSON.parse(localStorage.getItem('typealot.collapsedFolders') || '[]');
+            return new Set(Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : []);
+        } catch {
+            return new Set();
+        }
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem('typealot.collapsedFolders', JSON.stringify([...collapsed]));
+        } catch {
+            // Folder navigation remains usable when local storage is unavailable.
+        }
+    }, [collapsed]);
     const [editor, setEditor] = useState<Editor | null>(null);
     const insert = useRef<(kind: string) => void>(() => {
     });
@@ -112,11 +146,38 @@ export default function App() {
     useEffect(() => {
         loadWorkspace().then(v => {
             setW(v);
-            setActive(v.notes[0]?.id || '');
-            setBoardId(v.boards[0]?.id || '');
+            setActive(v.notes.some(n => n.id === savedNavigation.active) ? savedNavigation.active : v.notes[0]?.id || '');
+            setBoardId(v.boards.some(b => b.id === savedNavigation.boardId) ? savedNavigation.boardId : v.boards[0]?.id || '');
+            if (location.hash.startsWith('#note/')) {
+                try {
+                    const id = decodeURIComponent(location.hash.slice(6));
+                    if (v.notes.some(n => n.id === id)) {
+                        setActive(id);
+                        setSection('notes');
+                    }
+                } catch { /* Ignore malformed fragment URLs. */
+                }
+            }
             setStatus('storage.saving');
         }).catch(e => setLoadError(toError(e)));
     }, []);
+    useEffect(() => {
+        if (!w) return;
+        // Discard an old deep link when navigation moves away from its destination.
+        let matches = true;
+        try {
+            if (location.hash.startsWith('#note/')) matches = section === 'notes' && decodeURIComponent(location.hash.slice(6)) === active;
+            if (location.hash.startsWith('#tag/')) matches = section === 'search' && `#${decodeURIComponent(location.hash.slice(5))}` === query;
+        } catch {
+            matches = false;
+        }
+        if (!matches) history.replaceState(history.state, '', location.pathname + location.search);
+        try {
+            localStorage.setItem('typealot.navigation', JSON.stringify({section, active, boardId, query, read}));
+        } catch {
+            // Navigation remains usable when local storage is unavailable.
+        }
+    }, [w, section, active, boardId, query, read]);
     useEffect(() => {
         if (!w) return;
         document.documentElement.dataset.theme = w.theme;
@@ -197,11 +258,14 @@ export default function App() {
                 return;
             }
             if (location.hash.startsWith('#note/')) {
-                const id = decodeURIComponent(location.hash.slice(6));
-                if (latest.current?.notes.some(n => n.id === id)) {
-                    setActive(id);
-                    setSection('notes');
-                    setMobileOpen(false);
+                try {
+                    const id = decodeURIComponent(location.hash.slice(6));
+                    if (latest.current?.notes.some(n => n.id === id)) {
+                        setActive(id);
+                        setSection('notes');
+                        setMobileOpen(false);
+                    }
+                } catch { /* Ignore malformed fragment URLs. */
                 }
             }
         };
@@ -571,7 +635,7 @@ export default function App() {
                     : section === 'boards' && board ? <Canvas key={board.id} board={board} workspace={w}
                                                               update={patch => mutate(w => ({
                                                                   ...w,
-                                                                  boards: w.boards.map(b => b.id === board.id ? {...b, ...patch} : b)
+                                                                  boards: w.boards.map(b => b.id === board.id ? {...b, ...(typeof patch === 'function' ? patch(b) : patch)} : b)
                                                               }))} openNote={openNote} attach={attach}/>
                         : section === 'search' ?
                             <div className="utility-page"><h1>{t('workspace.findAThought')}</h1><label

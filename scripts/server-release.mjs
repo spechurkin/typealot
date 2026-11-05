@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {releaseUrl} from '../shared/updates.mjs';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-const base = releaseUrl(process.env.TYPEALOT_RELEASE_URL || 'https://github.com/spechurkin/typealot/releases/download/server-latest/');
+const base = releaseUrl(process.env.TYPEALOT_RELEASE_URL || `https://github.com/spechurkin/typealot/releases/download/server-${pkg.serverVersion}/`);
 const body = await deploymentBundle();
 await mkdir('release/server', {recursive: true});
 const name = `typealot_server_${pkg.serverVersion}.json.gz`;

@@ -16,7 +16,7 @@ test('inline insertion, persistence and exact global search by clickable hashtag
     await expect(doc.getByRole('link', {name: '#Проект', exact: true})).toBeVisible();
     await page.keyboard.insertText(', конец');
     await expect(doc.getByRole('link', {name: '#Проект', exact: true})).toHaveAttribute('href', /#tag\//);
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.reload();
     await expect(doc.getByRole('link', {name: '#Проект', exact: true})).toBeVisible();
 
@@ -73,7 +73,7 @@ test('pasted and formatted hashtags remain editable and exclude code and URLs', 
     await expect(doc.locator('a[data-hashtag="#код"], a[data-hashtag="#fragment"]')).toHaveCount(0);
     await doc.fill('#редактирование');
     await expect(doc.getByRole('link', {name: '#редактирование', exact: true})).toBeVisible();
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.reload();
     await doc.click();
     await page.keyboard.press('Control+End');

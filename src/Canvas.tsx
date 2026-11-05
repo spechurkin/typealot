@@ -1,5 +1,5 @@
 import {isFolderDrag} from './folder-drag';
-import {isNoteDrag, draggedNote} from './note-drag';
+import {draggedNote, isNoteDrag} from './note-drag';
 import {type DisplayError, errorText, t, toError, useLanguage} from './i18n';
 import {createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {autoUpdate, computePosition, flip, offset, shift} from '@floating-ui/dom';
@@ -17,9 +17,9 @@ import {
     Position,
     ReactFlow,
     ReactFlowProvider,
-    ViewportPortal,
     useReactFlow,
-    type Viewport
+    type Viewport,
+    ViewportPortal
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -39,22 +39,17 @@ import {
     ZoomOut
 } from 'lucide-react';
 import type {Board, Workspace} from './model';
-import {textOf, uid} from './model';
-import type {JSONContent} from '@tiptap/react';
+import {uid} from './model';
+import {renderNoteContent} from './export';
 import AttachmentPicker from './AttachmentPicker';
 import NoteLinkPicker from './NoteLinkPicker';
 import {type BoardCollaboration, useBoardCollaboration} from './board-collaboration';
 import CanvasPresence from './CanvasPresence';
 import CollaborationStatus from './CollaborationStatus';
 
-function mediaSummary(doc: JSONContent): string {
-    const found: string[] = [];
-    const walk = (node: JSONContent) => {
-        if (node.type === 'media') found.push(node.attrs?.provider === 'youtube' ? 'YouTube' : 'Spotify');
-        node.content?.forEach(walk);
-    };
-    walk(doc);
-    return [...new Set(found)].join(' · ');
+function NoteContent({note, workspace}: { note: Workspace['notes'][number]; workspace: Workspace }) {
+    return <div className="board-note-content document-body" inert
+                dangerouslySetInnerHTML={{__html: renderNoteContent(note, workspace)}}/>;
 }
 
 const BoardContext = createContext<{
@@ -92,11 +87,12 @@ function ObjectNode({data, selected, id}: NodeProps) {
         {kind === 'note' ? <><span className="object-label">{t('notes.kind')}</span>
                 <button className="card-title nodrag"
                         onClick={() => note && openNote(note.id)}>{note?.title || t('canvas.noteDeleted')}</button>
-                <p>{note ? textOf(note.content).slice(0, 250) : t('canvas.deletedNoteDescription')}</p>
-                {note && <span className="object-label">{mediaSummary(note.content)}</span>}</>
+                {note ? <NoteContent note={note} workspace={workspace}/> : <p>{t('canvas.deletedNoteDescription')}</p>}</>
             : kind === 'image' ?
                 <img src={String(data.src)} alt={String(data.alt || t('canvas.canvasImage'))} draggable={false}/>
-                : kind === 'drawing' ? <svg viewBox="0 0 300 160" width="300" height="160">
+                : kind === 'drawing' ?
+                    <svg viewBox={`0 0 ${Number(data.viewBoxWidth) || 300} ${Number(data.viewBoxHeight) || 160}`}
+                         preserveAspectRatio="none" width="100%" height="100%">
                         <path d={String(data.path)} stroke={String(data.color || '#81ad9b')} strokeWidth="3" fill="none"
                               strokeLinecap="round"/>
                     </svg>
@@ -114,10 +110,33 @@ function ObjectNode({data, selected, id}: NodeProps) {
 }
 
 const nodeTypes = {object: ObjectNode};
+type BoardUpdate = Partial<Board> | ((board: Board) => Partial<Board>);
+
+function TextSizeInput({value, onChange}: { value: number; onChange: (size: number) => void }) {
+    const [draft, setDraft] = useState<string | null>(null);
+    const commit = () => {
+        if (draft !== null && draft.trim() !== '' && Number.isFinite(Number(draft))) {
+            onChange(Math.min(96, Math.max(12, Number(draft))));
+        }
+        setDraft(null);
+    };
+    return <input aria-label={t('canvas.canvasTextSize')} type="number" min="12" max="96"
+                  value={draft ?? value}
+                  onChange={event => {
+                      const raw = event.target.value, size = event.target.valueAsNumber;
+                      setDraft(raw);
+                      if (Number.isFinite(size) && size >= 12 && size <= 96) onChange(size);
+                  }}
+                  onBlur={commit}
+                  onKeyDown={event => {
+                      if (event.key === 'Enter') event.currentTarget.blur();
+                  }}/>;
+}
+
 export default function Canvas(props: {
     board: Board;
     workspace: Workspace;
-    update: (patch: Partial<Board>) => void;
+    update: (patch: BoardUpdate) => void;
     openNote: (id: string) => void;
     attach: (file: File) => Promise<string>
 }) {
@@ -128,7 +147,7 @@ export default function Canvas(props: {
 function CanvasInner({board, workspace, update, openNote, attach}: {
     board: Board;
     workspace: Workspace;
-    update: (patch: Partial<Board>) => void;
+    update: (patch: BoardUpdate) => void;
     openNote: (id: string) => void;
     attach: (file: File) => Promise<string>
 }) {
@@ -195,12 +214,28 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
     };
     const text = chosen.length === 1 && chosen[0].data.kind === 'text';
     const drawing = chosen.length === 1 && chosen[0].data.kind === 'drawing';
-    const changeData = (patch: Record<string, unknown>) => update({
-        nodes: nodes.map(n => n.selected ? {
+    const resizeImage = (delta: number) => update(current => ({
+        nodes: current.nodes.map(node => {
+            if (node.id !== chosen[0]?.id || node.data.kind !== 'image') return node;
+            const width = node.width ?? node.measured?.width ?? (Number(node.style?.width) || 300);
+            const height = node.height ?? node.measured?.height ?? Number(node.style?.height);
+            if (!(width > 0 && height > 0)) return node;
+            const nextWidth = Math.max(160, 100 * width / height, width + delta);
+            const nextHeight = height * nextWidth / width;
+            return {
+                ...node,
+                width: nextWidth,
+                height: nextHeight,
+                style: {...node.style, width: nextWidth, height: nextHeight}
+            };
+        })
+    }));
+    const changeData = (patch: Record<string, unknown>) => update(current => ({
+        nodes: current.nodes.map(n => chosen.some(selected => selected.id === n.id) ? {
             ...n,
             data: {...n.data, ...patch}
         } : n)
-    });
+    }));
     const patchEdge = (patch: Partial<(typeof board.edges)[number]>) => update({edges: board.edges.map(e => e.id === edge?.id ? {...e, ...patch} : e)});
     const layerOrder = (id: string, direction: 'front' | 'back') => {
         const ranks = nodes.map(n => n.zIndex || 0);
@@ -270,18 +305,8 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
             if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node)) for (const node of chosen) collaboration.release(node.id);
         }}>
             {image ? <><span>{t('media.image')}</span>
-                    <button onClick={() => update({
-                        nodes: nodes.map(n => n.selected ? {
-                            ...n,
-                            style: {...n.style, width: Math.max(100, Number(n.style?.width || 300) - 40)}
-                        } : n)
-                    })}>{t('canvas.makeSmaller')}</button>
-                    <button onClick={() => update({
-                        nodes: nodes.map(n => n.selected ? {
-                            ...n,
-                            style: {...n.style, width: Number(n.style?.width || 300) + 40}
-                        } : n)
-                    })}>{t('canvas.makeLarger')}</button>
+                    <button onClick={() => resizeImage(-40)}>{t('canvas.makeSmaller')}</button>
+                    <button onClick={() => resizeImage(40)}>{t('canvas.makeLarger')}</button>
                 </>
                 : edge ? <><span>{t('canvas.connection')}</span><label>{t('canvas.color')}<input type="color"
                                                                                                  value={String(edge.style?.stroke || '#81ad9b')}
@@ -364,10 +389,10 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
                             </select></label>
                             <button onClick={clearSelection}>{t('canvas.select')}</button>
                         </>
-                        : text ? <><span>{t('canvas.textBlock')}</span><label>{t('common.textSize')}<input
-                                aria-label={t('canvas.canvasTextSize')} type="number" min="12" max="96"
+                        : text ? <><span>{t('canvas.textBlock')}</span><label>{t('common.textSize')}<TextSizeInput
+                                key={chosen[0].id}
                                 value={Number(chosen[0].data.fontSize) || 18}
-                                onChange={e => changeData({fontSize: Math.min(96, Math.max(12, +e.target.value))})}/></label>
+                                onChange={fontSize => changeData({fontSize})}/></label>
                                 <button onClick={clearSelection}>{t('canvas.select')}</button>
                             </>
                             : drawing ? <><span>{t('canvas.drawing')}</span><label>{t('canvas.drawingColor')}<input
@@ -507,8 +532,8 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
         }))}
                                                                     edges={board.edges}
                                                                     nodeTypes={nodeTypes}
-                                                                    onNodesChange={changes => update({nodes: applyNodeChanges(changes, nodes)})}
-                                                                    onEdgesChange={changes => update({edges: applyEdgeChanges(changes, board.edges)})}
+                                                                    onNodesChange={changes => update(current => ({nodes: applyNodeChanges(changes, current.nodes)}))}
+                                                                    onEdgesChange={changes => update(current => ({edges: applyEdgeChanges(changes, current.edges)}))}
                                                                     onNodeDragStart={(_, node) => {
                                                                         void collaboration.claim(node.id);
                                                                     }}
@@ -544,26 +569,29 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
                      style={{transform: `translate(${notePreview.x}px, ${notePreview.y}px)`, width: 300}}>
                     <span className="object-label">{t('notes.kind')}</span>
                     <div className="card-title">{previewNote.title || t('notes.untitled')}</div>
-                    <p>{textOf(previewNote.content).slice(0, 250)}</p>
-                    <span className="object-label">{mediaSummary(previewNote.content)}</span>
+                    <NoteContent note={previewNote} workspace={workspace}/>
                 </div>
             </ViewportPortal>}
         </ReactFlow><CanvasPresence
             awareness={collaboration.session.awareness}/></BoardContext.Provider>
             {tool === 'draw' && <svg className="draw-overlay" onPointerDown={e => {
                 e.currentTarget.setPointerCapture(e.pointerId);
-                points.current = [{x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY}];
+                const bounds = e.currentTarget.getBoundingClientRect();
+                points.current = [{x: e.clientX - bounds.left, y: e.clientY - bounds.top}];
             }} onPointerMove={e => {
-                if (!e.buttons) return;
-                points.current.push({x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY});
+                if (!e.buttons || !points.current.length) return;
+                const bounds = e.currentTarget.getBoundingClientRect();
+                points.current.push({x: e.clientX - bounds.left, y: e.clientY - bounds.top});
                 setPath(points.current.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join(' '));
-            }} onPointerUp={() => {
+            }} onPointerUp={e => {
                 const p = points.current;
                 if (p.length > 1) {
-                    const bounds = document.querySelector('.canvas-area')!.getBoundingClientRect();
-                    const minX = Math.min(...p.map(v => v.x)), minY = Math.min(...p.map(v => v.y));
-                    const width = Math.max(20, Math.max(...p.map(v => v.x)) - minX),
-                        height = Math.max(20, Math.max(...p.map(v => v.y)) - minY);
+                    const bounds = e.currentTarget.getBoundingClientRect();
+                    const padding = 1.5; // Include the full 3px stroke in the object's bounds.
+                    const minX = Math.min(...p.map(v => v.x)) - padding,
+                        minY = Math.min(...p.map(v => v.y)) - padding;
+                    const width = Math.max(...p.map(v => v.x)) + padding - minX,
+                        height = Math.max(...p.map(v => v.y)) + padding - minY;
                     const pos = flow.screenToFlowPosition({x: bounds.left + minX, y: bounds.top + minY});
                     const zoom = flow.getZoom();
                     update({
@@ -573,7 +601,9 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
                             position: pos,
                             data: {
                                 kind: 'drawing',
-                                path: p.map((v, i) => `${i ? 'L' : 'M'}${(v.x - minX) / width * 300},${(v.y - minY) / height * 160}`).join(' ')
+                                path: p.map((v, i) => `${i ? 'L' : 'M'}${v.x - minX},${v.y - minY}`).join(' '),
+                                viewBoxWidth: width,
+                                viewBoxHeight: height
                             },
                             style: {width: width / zoom, height: height / zoom}
                         }]
@@ -582,7 +612,7 @@ function CanvasInner({board, workspace, update, openNote, attach}: {
                 points.current = [];
                 setPath('');
             }}>
-                <path d={path} stroke="var(--accent)" strokeWidth="3" fill="none"/>
+                <path d={path} stroke="var(--accent)" strokeWidth="3" fill="none" strokeLinecap="round"/>
             </svg>}
             <div
                 className={`canvas-hint ${tool === 'draw' || tool === 'connect' || tool === 'pan' ? '' : 'desktop-input-hint'}`}>{tool === 'draw' ? t('canvas.drawWithAMouseOrTouch') : tool === 'connect' ? t('canvas.connectHandlesOnObjectEdges') : tool === 'pan' ? t('canvas.dragTheCanvasToPan') : t('canvas.shiftSelectMultipleObjectsWheelZoom')}</div>

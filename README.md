@@ -24,7 +24,7 @@ Add note cards, text, images, and shapes, then connect them by dragging from any
 Arrange a plan, follow a thread, or keep related material in view while you write.
 
 Hold the middle mouse button to pan and use the wheel to zoom. In **Pan** mode, you can also drag with the
-left mouse button. Hold **Shift** to select several objects, drag a corner to resize, and use **Layers**
+left mouse button. Hold **Ctrl** to select several objects, drag a corner to resize, and use **Layers**
 to change their order or visibility.
 
 ## Keep a copy you can take with you

@@ -1186,10 +1186,47 @@ dialog button {
   line-height: 1.4
 }
 
-.board-object p {
+.board-object > p {
   font-size: 12px;
   color: var(--muted);
   margin: 12px 0 0
+}
+
+.board-object.note {
+  display: flex;
+  flex-direction: column;
+  color: var(--text)
+}
+
+.board-object.note .card-title {
+  display: block;
+  flex-shrink: 1;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  font-family: Tahoma, Arial, sans-serif;
+  font-size: 30px;
+  line-height: 1.25;
+  letter-spacing: -.75px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  margin: 0 0 18.75px
+}
+
+.board-note-content {
+  zoom: .75;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap
+}
+
+.board-note-content > :first-child {
+  margin-top: 0
+}
+
+.board-note-content > :last-child {
+  margin-bottom: 0
 }
 
 .board-object textarea {

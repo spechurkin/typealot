@@ -54,14 +54,9 @@ jobs:
       - run: node scripts/android-release.mjs
       - run: node scripts/release-guard.mjs android publish
         id: release_guard
-      - name: Publish APK before manifest
-        if: steps.release_guard.outputs.publish == 'true'
+      - name: Publish numbered release and compatibility feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view android-latest || gh release create android-latest --title 'Android application updates' --notes 'Independent Android update channel.' --target "$GITHUB_SHA"
-          gh release edit android-latest --prerelease=false
-          gh release upload android-latest release/android/*.apk --clobber
-          gh release upload android-latest release/android/apps.json --clobber
+        run: node scripts/publish-release.mjs android ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}
       - if: always()
         run: rm -f "$RUNNER_TEMP/typealot-release.jks"

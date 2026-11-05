@@ -22,7 +22,7 @@ await writeFile(path.join(destination, 'apps.json'), JSON.stringify({
     android: {
         version: pkg.version,
         versionCode,
-        url: `https://github.com/spechurkin/typealot/releases/download/android-latest/${name}`
+        url: `https://github.com/spechurkin/typealot/releases/download/android-${pkg.version}/${name}`
     }
 }, null, 2));
 console.log(`Packaged ${name}`);

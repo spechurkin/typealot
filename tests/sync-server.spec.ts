@@ -175,6 +175,224 @@ test('address-only admin, synchronization and conflict resolution', async ({page
     await expect(page.locator('.backup-list time').first()).toBeVisible();
     await second.close();
 });
+test('reopening a stale device must download deletions before sending any local changes', async ({page, request}) => {
+    const old = initialWorkspace();
+    old.notes[0].title = 'Surviving note';
+    old.notes.push({...old.notes[0], id: 'removed-note', title: 'Deleted on website'});
+    old.folders.push({id: 'removed-folder', name: 'Deleted folder', parentId: null});
+    old.attachments.push({
+        id: 'removed-file',
+        name: 'old.txt',
+        mime: 'text/plain',
+        data: 'data:text/plain;base64,b2xk'
+    });
+    old.boards.push({...structuredClone(old.boards[0]), id: 'removed-board'});
+    old.boards[0].nodes.push({...structuredClone(old.boards[0].nodes[0]), id: 'removed-object'});
+    let read = await request.get(`${origin}/workspace`);
+    expect((await request.put(`${origin}/workspace`, {
+        headers: {'If-Match': read.headers().etag}, data: old
+    })).ok()).toBe(true);
+    await page.goto('/');
+    await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+    await page.getByLabel('IP или домен сервера').fill(origin);
+    await expect(page.locator('.sync-settings').getByRole('status')).toHaveText('Синхронизировано');
+    const cached = () => page.evaluate(() => new Promise<any>((resolve, reject) => {
+        const open = indexedDB.open('keyval-store');
+        open.onsuccess = () => {
+            const db = open.result, get = db.transaction('keyval').objectStore('keyval').get('typealot.workspace');
+            get.onsuccess = () => {
+                db.close();
+                resolve(get.result);
+            };
+            get.onerror = () => {
+                db.close();
+                reject(get.error);
+            };
+        };
+        open.onerror = () => reject(open.error);
+    }));
+    await expect.poll(async () => (await cached())?.notes.map((n: { id: string }) => n.id)).toContain('removed-note');
+    const server = structuredClone(old);
+    server.notes = server.notes.filter(n => n.id !== 'removed-note');
+    server.folders = server.folders.filter(f => f.id !== 'removed-folder');
+    server.attachments = [];
+    server.boards = server.boards.filter(b => b.id !== 'removed-board');
+    server.boards[0].nodes = server.boards[0].nodes.filter(n => n.id !== 'removed-object');
+    server.boards[0].title = 'Website board edit';
+    // Delay the first read after restart so edits to the stale cache happen during the download.
+    let release!: () => void, reading!: () => void;
+    const gate = new Promise<void>(resolve => {
+        release = resolve;
+    });
+    const started = new Promise<void>(resolve => {
+        reading = resolve;
+    });
+    await page.route(`${origin}/workspace`, async route => {
+        if (route.request().method() === 'GET') {
+            reading();
+            await gate;
+        }
+        await route.continue();
+    });
+    await page.context().setOffline(true);
+    read = await request.get(`${origin}/workspace`);
+    expect((await request.put(`${origin}/workspace`, {
+        headers: {'If-Match': read.headers().etag}, data: server
+    })).ok()).toBe(true);
+    await page.context().setOffline(false);
+    const writes: string[] = [];
+    page.on('request', req => {
+        if (req.url() === `${origin}/workspace` && req.method() === 'PUT') writes.push(req.postData()!);
+    });
+    await page.reload();
+    await started;
+    await page.getByLabel('Заголовок заметки').fill('Stale edit while loading');
+    expect(writes).toEqual([]);
+    release();
+    await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Stale edit while loading');
+    await expect.poll(async () => (await cached())?.attachments).toEqual([]);
+    const loaded = await cached();
+    expect(loaded.notes.map((n: { id: string }) => n.id)).toEqual(['welcome']);
+    expect(loaded.folders.map((f: { id: string }) => f.id)).toEqual(['inbox']);
+    expect(loaded.boards.map((b: { id: string }) => b.id)).toEqual(['board']);
+    expect(loaded.boards[0].nodes.map((n: { id: string }) => n.id)).toEqual(['card']);
+    expect(loaded.boards[0].title).toBe('Website board edit');
+    await page.getByLabel('Заголовок заметки').fill('Fresh edit after download');
+    await expect.poll(async () => (await (await request.get(`${origin}/workspace`)).json()).notes[0].title).toBe('Fresh edit after download');
+    const saved = await (await request.get(`${origin}/workspace`)).json();
+    expect(saved.notes).toHaveLength(1);
+    expect(saved.attachments).toEqual([]);
+    expect(saved.boards).toHaveLength(1);
+    expect(saved.boards[0].title).toBe('Website board edit');
+    await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+    await page.getByRole('button', {name: 'Показать локальные копии', exact: true}).click();
+    await expect(page.locator('.backup-list time').first()).toBeVisible();
+});
+
+test('a saved legacy connection without a baseline protects offline edits after reopening', async ({
+                                                                                                       page,
+                                                                                                       context,
+                                                                                                       request
+                                                                                                   }) => {
+    const read = await request.get(`${origin}/workspace`);
+    expect((await request.put(`${origin}/workspace`, {
+        headers: read.ok() ? {'If-Match': read.headers().etag} : {'If-None-Match': '*'},
+        data: initialWorkspace()
+    })).ok()).toBe(true);
+    await page.goto('/');
+    await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+    await page.getByLabel('Синхронизировать автоматически').uncheck();
+    await page.getByLabel('IP или домен сервера').fill(origin);
+    await page.getByRole('button', {name: 'Заметки', exact: true}).click();
+    await page.getByLabel('Заголовок заметки').fill('Legacy offline edits');
+    await expect.poll(() => page.evaluate(async () => {
+        const path = '/src/storage.ts';
+        return (await (await import(path)).loadWorkspace()).notes[0].title;
+    })).toBe('Legacy offline edits');
+    await page.close();
+    const reopened = await context.newPage();
+    await reopened.goto('/');
+    await reopened.getByRole('button', {name: 'Настройки', exact: true}).click();
+    await reopened.getByRole('button', {name: 'Синхронизировать сейчас', exact: true}).click();
+    await expect(reopened.getByRole('dialog')).toContainText('Legacy offline edits');
+    await reopened.getByRole('dialog').getByRole('button', {
+        name: 'Сохранить мои правки отдельной копией',
+        exact: true
+    }).click();
+    await reopened.getByRole('button', {name: 'Заметки', exact: true}).click();
+    await expect(reopened.locator('.sidebar')).toContainText('Legacy offline edits');
+});
+
+for (const [deleteEditedNote, keepCopy] of [[false, true], [true, true], [true, false]]) {
+    test(`offline edits survive restart and reconnect (remote deletion: ${deleteEditedNote}, keep copy: ${keepCopy})`, async ({
+                                                                                                                                  page,
+                                                                                                                                  context,
+                                                                                                                                  request
+                                                                                                                              }) => {
+        const seed = initialWorkspace();
+        seed.notes.push({...structuredClone(seed.notes[0]), id: 'deleted-offline', title: 'Remove offline'});
+        seed.attachments.push({
+            id: 'file',
+            name: 'remove.txt',
+            mime: 'text/plain',
+            data: 'data:text/plain;base64,eA=='
+        });
+        const read = await request.get(`${origin}/workspace`);
+        expect((await request.put(`${origin}/workspace`, {
+            headers: read.ok() ? {'If-Match': read.headers().etag} : {'If-None-Match': '*'},
+            data: seed
+        })).ok()).toBe(true);
+        await page.goto('/');
+        await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+        await page.getByLabel('IP или домен сервера').fill(origin);
+        await expect(page.locator('.sync-settings').getByRole('status')).toHaveText('Синхронизировано');
+        await expect.poll(() => page.evaluate(async () => {
+            const path = '/src/storage.ts';
+            return (await (await import(path)).loadWorkspace()).syncState?.digest;
+        })).toBeTruthy();
+        await context.setOffline(true);
+        await page.getByRole('button', {name: 'Заметки', exact: true}).click();
+        await page.getByLabel('Заголовок заметки').fill('Offline work survives');
+        await expect.poll(() => page.evaluate(async () => {
+            const path = '/src/storage.ts';
+            return (await (await import(path)).loadWorkspace()).notes.find((note: {
+                id: string
+            }) => note.id === 'welcome')?.title;
+        })).toBe('Offline work survives');
+        await page.getByLabel('Действия с заметкой: Remove offline', {exact: true}).click();
+        await page.getByRole('button', {name: 'Удалить заметку', exact: true}).click();
+        await page.getByRole('dialog').getByRole('button', {name: 'Удалить', exact: true}).click();
+        await page.getByRole('button', {name: 'Вложения', exact: true}).click();
+        await page.locator('.attachment').filter({hasText: 'remove.txt'}).getByRole('button', {
+            name: 'Удалить',
+            exact: true
+        }).click();
+        await page.getByRole('dialog').getByRole('button', {name: 'Удалить', exact: true}).click();
+        await expect.poll(() => page.evaluate(async () => {
+            const path = '/src/storage.ts';
+            const saved = await (await import(path)).loadWorkspace();
+            return {notes: saved.notes.map((note: { id: string }) => note.id), attachments: saved.attachments};
+        })).toEqual({notes: ['welcome'], attachments: []});
+        await page.close();
+        const remote = await request.get(`${origin}/workspace`), server = await remote.json();
+        server.boards[0].title = 'Independent server edit';
+        if (deleteEditedNote) server.notes = server.notes.filter((note: { id: string }) => note.id !== 'welcome');
+        expect((await request.put(`${origin}/workspace`, {
+            headers: {'If-Match': remote.headers().etag},
+            data: server
+        })).ok()).toBe(true);
+        await context.setOffline(false);
+        const reopened = await context.newPage();
+        await reopened.goto('/');
+        if (deleteEditedNote) {
+            const dialog = reopened.getByRole('dialog');
+            await expect(dialog).toContainText('Offline work survives');
+            await reopened.screenshot({path: test.info().outputPath('offline-conflict.png')});
+            expect((await (await request.get(`${origin}/workspace`)).json()).notes.some((note: {
+                title: string
+            }) => note.title === 'Offline work survives')).toBe(false);
+            await dialog.getByRole('button', {
+                name: keepCopy ? 'Сохранить мои правки отдельной копией' : 'Загрузить версию файла с сервера',
+                exact: true
+            }).click();
+        }
+        await expect.poll(async () => {
+            const server = await (await request.get(`${origin}/workspace`)).json();
+            return {
+                hasEdits: server.notes.some((note: {
+                    title: string
+                }) => note.title.includes('Offline work survives')),
+                hasDeleted: server.notes.some((note: { id: string }) => note.id === 'deleted-offline')
+            };
+        }).toEqual({hasEdits: keepCopy, hasDeleted: false});
+        const synced = await (await request.get(`${origin}/workspace`)).json();
+        expect(synced.notes.some((note: { id: string }) => note.id === 'deleted-offline')).toBe(false);
+        expect(synced.attachments).toEqual([]);
+        expect(synced.boards[0].title).toBe('Independent server edit');
+        expect(synced.syncState).toBeUndefined();
+    });
+}
+
 test('server discovers files without authentication and rejects stale concurrent writes', async ({request}) => {
     expect(await (await request.get(`${origin}/.well-known/typealot`)).json()).toMatchObject({workspace: '/workspace'});
     let read = await request.get(`${origin}/workspace`);

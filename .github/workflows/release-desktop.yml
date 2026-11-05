@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: release-desktop-${{ github.ref }}
+  group: release-desktop
   cancel-in-progress: false
 jobs:
   build:
@@ -84,16 +84,7 @@ jobs:
           merge-multiple: true
       - run: node scripts/release-guard.mjs desktop publish
         id: release_guard
-      - name: Publish installers before metadata
-        if: steps.release_guard.outputs.publish == 'true'
+      - name: Publish numbered release and compatibility feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          if ! gh release view desktop-latest >/dev/null 2>&1; then
-            gh release create desktop-latest --title 'Desktop application updates' --notes 'Windows, macOS and Linux builds.' --target '${{ github.sha }}'
-          fi
-          gh release edit desktop-latest --prerelease=false
-          shopt -s nullglob
-          assets=(release/desktop/*.exe release/desktop/*.dmg release/desktop/*.zip release/desktop/*.deb release/desktop/*.AppImage release/desktop/*.blockmap)
-          gh release upload desktop-latest "${assets[@]}" --clobber
-          gh release upload desktop-latest release/desktop/*.yml --clobber
+        run: node scripts/publish-release.mjs desktop ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}

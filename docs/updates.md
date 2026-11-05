@@ -27,6 +27,11 @@ to keep your local data.
 
 You can also download the APK directly from [Releases](https://github.com/spechurkin/typealot/releases).
 
+Releases include the version in both the name and tag: **Android 1.0.1** (`android-1.0.1`),
+**Desktop 1.0.1** (`desktop-1.0.1`), and **Server 1.0.1** (`server-1.0.1`). Each version keeps its own downloads.
+In Obtainium, use the release-tag filter `^android-[0-9]+\.[0-9]+\.[0-9]+$` to select Android releases.
+The `*-latest` prereleases are compatibility feeds for automatic updates in existing installations.
+
 ## Browser
 
 When your server has a new version of the web app, Typealot offers to reload the page.

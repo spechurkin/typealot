@@ -1,5 +1,41 @@
 import {expect, test} from '@playwright/test';
 
+test('folder expansion survives reload, including children hidden by a collapsed parent', async ({page}) => {
+    await page.goto('/');
+    const parent = page.getByRole('button', {name: 'Мои заметки', exact: true});
+    await expect(parent).toHaveAttribute('aria-expanded', 'true');
+    await page.getByLabel('Создать папку в Мои заметки', {exact: true}).click();
+    await page.getByLabel('Название', {exact: true}).fill('Вложенная');
+    await page.getByRole('button', {name: 'Сохранить', exact: true}).click();
+    const child = page.getByRole('button', {name: 'Вложенная', exact: true});
+    await child.click();
+    await parent.click();
+    await expect(page.locator('.save-status')).toContainText('Сохранено');
+    await page.reload();
+    await expect(parent).toHaveAttribute('aria-expanded', 'false');
+    await expect(child).toHaveCount(0);
+    await expect(page.locator('.tree-note')).toHaveCount(0);
+    await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Место для ваших мыслей');
+    await parent.click();
+    await expect(child).toHaveAttribute('aria-expanded', 'false');
+    await child.click();
+    await page.reload();
+    await expect(parent).toHaveAttribute('aria-expanded', 'true');
+    await expect(child).toHaveAttribute('aria-expanded', 'true');
+});
+
+for (const saved of ['{broken', '{"inbox":true}']) {
+    test(`invalid saved folder state does not prevent opening notes: ${saved}`, async ({page}) => {
+        await page.addInitScript(value => localStorage.setItem('typealot.collapsedFolders', value), saved);
+        await page.goto('/');
+        await expect(page.getByRole('button', {
+            name: 'Мои заметки',
+            exact: true
+        })).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Место для ваших мыслей');
+    });
+}
+
 test('nested folder shortcut creates inside a collapsed parent', async ({page}) => {
     await page.goto('/');
     const folder = page.locator('.folder-row').filter({hasText: 'Мои заметки'});

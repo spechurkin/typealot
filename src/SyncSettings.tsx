@@ -8,6 +8,7 @@ import {
     portableWorkspace,
     synchronize,
     type SyncResult,
+    syncServerId,
     type SyncSettings
 } from './sync';
 import {mergeWorkspaces} from './merge';
@@ -53,7 +54,7 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
                 const saved = await loadSyncSettings();
                 if (cancelled) return;
                 if (saved) {
-                    const next = {...defaultSync, ...saved};
+                    const next = {...defaultSync, ...saved, protectLocal: true};
                     settings.current = next;
                     setConfig(next);
                     setReady(true);
@@ -96,7 +97,8 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
             ...settings.current, ...patch, ...(changed ? {
                 digest: undefined,
                 etag: undefined,
-                base: undefined
+                base: undefined,
+                protectLocal: false
             } : {})
         };
         settings.current = next;
@@ -116,9 +118,14 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
     useEffect(() => {
         if (!config.automatic || !liveUrl || conflict) return;
         const channel = new RealtimeChannel(liveUrl, requestSync);
+        const unsubscribe = channel.subscribe(() => {
+            // Rejoin live rooms only after HTTP sync has reconciled the offline changes.
+            if (channel.status() === 'offline') setLiveUrl('');
+        });
         setRealtime(channel);
         live.current = channel;
         return () => {
+            unsubscribe();
             channel.destroy();
             live.current = null;
             setRealtime(null);
@@ -137,10 +144,12 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
             return;
         }
         const liveWorkspace = current.current!;
+        const url = settings.current.url;
         const rebased = mergeWorkspaces(snapshot, liveWorkspace, result.workspace);
         if (rebased.conflicts.length) {
             const next = {
                 kind: 'conflict' as const,
+                local: liveWorkspace,
                 remote: result.workspace,
                 workspace: rebased.workspace,
                 conflicts: rebased.conflicts,
@@ -153,13 +162,24 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
             return;
         }
         if (!settings.current.base && await digestWorkspace(liveWorkspace) !== await digestWorkspace(rebased.workspace)) await checkpoint(liveWorkspace);
-        if (await digestWorkspace(liveWorkspace) !== await digestWorkspace(rebased.workspace)) replaceCurrent(rebased.workspace);
         const next = {
             ...settings.current,
             digest: result.digest,
             etag: result.etag,
-            base: portableWorkspace(result.workspace)
+            base: portableWorkspace(result.workspace),
+            protectLocal: false
         };
+        // Autosave writes the accepted baseline together with the local content in one record.
+        const contentChanged = await digestWorkspace(liveWorkspace) !== await digestWorkspace(rebased.workspace);
+        const server = await syncServerId(url);
+        if (settings.current.url !== url) return;
+        if (current.current !== liveWorkspace) return accept(result, snapshot);
+        if (contentChanged || liveWorkspace.syncState?.server !== server || liveWorkspace.syncState?.digest !== next.digest || liveWorkspace.syncState?.etag !== next.etag) {
+            replaceCurrent({
+                ...rebased.workspace,
+                syncState: {server, base: next.base, digest: next.digest, etag: next.etag}
+            });
+        }
         settings.current = next;
         setConfig(next);
         conflictRef.current = null;
@@ -218,11 +238,18 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
     useEffect(() => {
         if (!ready || !config.automatic || !config.url) return;
         const poll = setInterval(() => void runRef.current(), realtime ? 15000 : 3000),
-            online = () => void runRef.current();
+            online = () => void runRef.current(),
+            visible = () => {
+                if (document.visibilityState === 'visible') void runRef.current();
+            };
         window.addEventListener('online', online);
+        window.addEventListener('focus', online);
+        document.addEventListener('visibilitychange', visible);
         return () => {
             clearInterval(poll);
             window.removeEventListener('online', online);
+            window.removeEventListener('focus', online);
+            document.removeEventListener('visibilitychange', visible);
         };
     }, [ready, config.automatic, config.url, realtime]);
     const refresh = () => void listBackups().then(setBackups).catch(e => setError(toError(e)));
@@ -231,30 +258,72 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
         if (!pending || !current.current) return;
         try {
             await checkpoint(current.current);
-            const next = mergeWorkspaces(pending.remote, current.current, pending.workspace).workspace;
-            const ids = new Set(pending.conflicts.map(file => file.id));
-            next.notes = next.notes.filter(note => !ids.has(note.id));
-            const folders = new Set(next.folders.map(folder => folder.id));
+            const next = mergeWorkspaces(pending.local, current.current, pending.workspace).workspace;
             for (const file of pending.conflicts) {
+                const copyTitle = (title: string) => t('collaboration.localCopy', {title});
+                if (file.kind === 'boards') {
+                    const local = current.current.boards.find(item => item.id === file.id);
+                    next.boards = next.boards.filter(item => item.id !== file.id);
+                    if (file.remote) next.boards.push(file.remote);
+                    if (keepCopies && local) next.boards.push({...local, id: uid(), title: copyTitle(local.title)});
+                    continue;
+                }
+                if (file.kind === 'attachments') {
+                    const local = current.current.attachments.find(item => item.id === file.id);
+                    next.attachments = next.attachments.filter(item => item.id !== file.id);
+                    if (file.remote) next.attachments.push(file.remote);
+                    if (keepCopies && local) next.attachments.push({...local, id: uid(), name: copyTitle(local.name)});
+                    continue;
+                }
+                if (file.kind === 'folders') {
+                    const local = current.current.folders.find(item => item.id === file.id);
+                    next.folders = next.folders.filter(item => item.id !== file.id);
+                    if (file.remote) next.folders.push(file.remote);
+                    if (keepCopies && local) {
+                        const id = uid();
+                        next.folders.push({...local, id, name: copyTitle(local.name)});
+                        if (!file.remote) {
+                            next.notes = next.notes.map(note => note.folderId === file.id ? {
+                                ...note,
+                                folderId: id
+                            } : note);
+                            next.folders = next.folders.map(folder => folder.parentId === file.id ? {
+                                ...folder,
+                                parentId: id
+                            } : folder);
+                        }
+                    }
+                    continue;
+                }
+                next.notes = next.notes.filter(note => note.id !== file.id);
                 if (file.remote) next.notes.push({
-                    ...file.remote,
-                    folderId: file.remote.folderId && folders.has(file.remote.folderId) ? file.remote.folderId : null
+                    ...file.remote
                 });
-                if (keepCopies && file.local) {
-                    const {collaboration, ...note} = file.local;
+                const local = current.current.notes.find(note => note.id === file.id);
+                if (keepCopies && local) {
+                    const {collaboration, ...note} = local;
                     next.notes.push({
                         ...note,
                         id: uid(),
-                        folderId: note.folderId && folders.has(note.folderId) ? note.folderId : null,
-                        title: t('collaboration.localCopy', {title: note.title || t('notes.untitled')})
+                        title: copyTitle(note.title || t('notes.untitled'))
                     });
                 }
             }
+            const folders = new Set(next.folders.map(folder => folder.id));
+            next.notes = next.notes.map(note => ({
+                ...note,
+                folderId: note.folderId && folders.has(note.folderId) ? note.folderId : null
+            }));
+            next.folders = next.folders.map(folder => ({
+                ...folder,
+                parentId: folder.parentId && folders.has(folder.parentId) ? folder.parentId : null
+            }));
             const nextConfig = {
                 ...settings.current,
                 base: portableWorkspace(pending.remote),
                 digest: await digestWorkspace(pending.remote),
-                etag: pending.etag
+                etag: pending.etag,
+                protectLocal: false
             };
             settings.current = nextConfig;
             setConfig(nextConfig);
@@ -317,7 +386,8 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
     const conflictDialog = conflict && state === 'sync.conflict' ?
         <Modal title={t('collaboration.fileConflict')} close={() => setState('sync.unsynced')}>
             <p>{t('collaboration.fileConflictDescription')}</p>
-            <ul>{conflict.conflicts.map(file => <li key={file.id}>{file.title || t('notes.untitled')}</li>)}</ul>
+            <ul>{conflict.conflicts.map(file => <li
+                key={`${file.kind || 'notes'}:${file.id}`}>{file.title || t('notes.untitled')}</li>)}</ul>
             <div className="button-row">
                 <button className="primary" disabled={busy}
                         onClick={() => void resolve(false)}>{t('collaboration.useServerFile')}</button>

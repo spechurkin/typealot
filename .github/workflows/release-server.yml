@@ -21,12 +21,7 @@ jobs:
       - run: npm run release:server
       - run: node scripts/release-guard.mjs server publish
         id: release_guard
-      - name: Publish server package before manifest
-        if: steps.release_guard.outputs.publish == 'true'
+      - name: Publish numbered release and compatibility feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release view server-latest || gh release create server-latest --title 'Server updates' --notes 'Independent synchronization server update channel.' --target "$GITHUB_SHA"
-          gh release edit server-latest --prerelease=false
-          gh release upload server-latest release/server/*.json.gz --clobber
-          gh release upload server-latest release/server/server.json --clobber
+        run: node scripts/publish-release.mjs server ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}

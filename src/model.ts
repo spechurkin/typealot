@@ -27,7 +27,8 @@ export type Workspace = {
     theme: 'dark' | 'light';
     sidebar: boolean;
     sidebarWidth: number;
-    markdown: boolean
+    markdown: boolean;
+    syncState?: { server: string; base: Workspace; digest: string; etag: string }
 };
 export const uid = randomId;
 
@@ -191,6 +192,10 @@ export function validateWorkspace(input: unknown): Workspace {
     w.attachments.forEach(a => {
         if (typeof a.data !== 'string' || !a.data.startsWith('data:')) throw new LocalizedError('errors.invalidAttachment');
     });
+    if (w.syncState) {
+        if (typeof w.syncState.server !== 'string' || !/^[a-f0-9]{64}$/.test(w.syncState.server) || typeof w.syncState.digest !== 'string' || typeof w.syncState.etag !== 'string' || !w.syncState.base || w.syncState.base.syncState) throw new LocalizedError('errors.invalidBackupFormat');
+        validateWorkspace(w.syncState.base);
+    }
     return {
         ...w,
         sidebarWidth: Math.min(420, Math.max(200, Number(w.sidebarWidth) || 260)),

@@ -1,9 +1,55 @@
 import {beforeEach, expect, it} from 'vitest';
 import {initialWorkspace} from '../src/model';
-import {exportNoteHtml} from '../src/export';
+import {exportNoteHtml, renderNoteContent} from '../src/export';
 import {setLanguage} from '../src/i18n';
 
 beforeEach(() => setLanguage('ru'));
+it('clips previews inside formatted blocks and leaves the full note unchanged', () => {
+    const w = initialWorkspace(), n = w.notes[0];
+    n.content = {
+        type: 'doc', content: [
+            {type: 'heading', attrs: {level: 2}, content: [{type: 'text', text: 'Title'}]},
+            {type: 'paragraph', content: [{type: 'text', text: 'x'.repeat(300), marks: [{type: 'bold'}]}]},
+            {type: 'paragraph', content: [{type: 'text', text: 'Hidden tail'}]}
+        ]
+    };
+    const original = JSON.stringify(n.content);
+    const preview = renderNoteContent(n, w);
+    expect(preview).toBe(`<h2>Title</h2><p><strong>${'x'.repeat(245)}...</strong></p>`);
+    expect(JSON.stringify(n.content)).toBe(original);
+    expect(exportNoteHtml(n, w)).toContain('Hidden tail');
+});
+
+it('adds ellipsis only when text exceeds the preview limit, including at a block boundary', () => {
+    const w = initialWorkspace(), n = w.notes[0];
+    n.content = {type: 'doc', content: [{type: 'paragraph', content: [{type: 'text', text: 'x'.repeat(250)}]}]};
+    expect(renderNoteContent(n, w)).toBe(`<p>${'x'.repeat(250)}</p>`);
+    n.content.content!.push({type: 'paragraph', content: [{type: 'text', text: 'tail'}]});
+    expect(renderNoteContent(n, w)).toBe(`<p>${'x'.repeat(250)}...</p>`);
+});
+
+it('escapes preview text and keeps only safe formatting attributes', () => {
+    const w = initialWorkspace(), n = w.notes[0];
+    n.content = {
+        type: 'doc', content: [{
+            type: 'paragraph', content: [
+                {
+                    type: 'text', text: '<script>unsafe</script>', marks: [
+                        {type: 'link', attrs: {href: 'javascript:alert(1)'}},
+                        {type: 'textStyle', attrs: {color: 'var(--ink-blue)', fontSize: '24px'}}
+                    ]
+                }
+            ]
+        }]
+    };
+    const preview = renderNoteContent(n, w);
+    expect(preview).toContain('&lt;script&gt;');
+    expect(preview).toContain('color:var(--ink-blue)');
+    expect(preview).toContain('font-size:24px');
+    expect(preview).not.toContain('javascript:');
+    expect(preview).not.toContain('<script>');
+});
+
 it('exports document formatting and media links while escaping executable text', () => {
     const w = initialWorkspace(), n = w.notes[0];
     n.title = '<script>alert(1)</script>';

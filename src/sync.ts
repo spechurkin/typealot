@@ -10,14 +10,23 @@ export type SyncSettings = {
     digest?: string;
     etag?: string;
     base?: Workspace;
+    protectLocal?: boolean;
     session?: string
 };
 export type SyncTransport = (url: string, init: RequestInit) => Promise<Response>;
 export type ServerConnection = { workspace: string; realtime?: string };
 export type SyncResult =
-    { kind: 'synced'; workspace: Workspace; digest: string; etag: string; connection?: ServerConnection }
+    {
+        kind: 'synced';
+        workspace: Workspace;
+        digest: string;
+        etag: string;
+        connection?: ServerConnection;
+        serverSnapshot?: boolean
+    }
     | {
     kind: 'conflict';
+    local: Workspace;
     remote: Workspace;
     workspace: Workspace;
     conflicts: FileConflict[];
@@ -33,6 +42,8 @@ export function syncUrl(raw: string): string {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search || url.pathname !== '/') throw new LocalizedError('errors.syncAddress');
     return url.href;
 }
+
+export const syncServerId = (url: string) => sha256Hex(syncUrl(url));
 
 export async function discoverWorkspace(raw: string, transport: SyncTransport = fetch): Promise<string> {
     return (await discoverServer(raw, transport)).workspace;
@@ -64,8 +75,9 @@ export async function discoverServer(raw: string, transport: SyncTransport = fet
 }
 
 export function portableWorkspace(w: Workspace): Workspace {
+    const {syncState, ...content} = w;
     return {
-        ...w,
+        ...content,
         profile: {name: '', handle: '', show: false},
         theme: 'dark',
         sidebar: true,
@@ -131,10 +143,12 @@ export async function synchronize(w: Workspace, config: SyncSettings, transport:
             };
             const hash = await digestWorkspace(remote.remote);
             if (hash === current) return {kind: 'synced', workspace: w, digest: current, etag: remote.etag, connection};
-            const base = config.base || (current === config.digest ? w : hash === config.digest ? remote.remote : undefined);
-            const merged = mergeWorkspaces(base, w, remote.remote);
+            const saved = w.syncState?.server === await syncServerId(config.url) ? w.syncState : undefined;
+            const base = config.base || saved?.base || (current === config.digest ? w : hash === config.digest ? remote.remote : undefined);
+            const merged = mergeWorkspaces(base, w, remote.remote, config.protectLocal);
             if (merged.conflicts.length) return {
                 kind: 'conflict',
+                local: w,
                 remote: remote.remote,
                 workspace: merged.workspace,
                 conflicts: merged.conflicts,
@@ -147,7 +161,8 @@ export async function synchronize(w: Workspace, config: SyncSettings, transport:
                 workspace: merged.workspace,
                 digest,
                 etag: remote.etag,
-                connection
+                connection,
+                serverSnapshot: !base
             };
             return {
                 ...await writeRemote(merged.workspace, connection.workspace, remote.etag, transport, config.session),
