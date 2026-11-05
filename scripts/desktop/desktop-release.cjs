@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const {verifyDesktopArchive} = require('./verify-desktop-archive.cjs');
 const {prepareUpgradeInclude} = require('./nsis-upgrade-script.cjs');
 const {desktopMetadata, linuxMenu} = require('./desktop-menu.cjs');
-const {desktopTarget} = require('./desktop-targets.cjs');
+const {desktopTarget, localElectronDist} = require('./desktop-targets.cjs');
 const {verifyDesktopBinary} = require('./verify-desktop-binary.cjs');
 
 async function main() {
@@ -39,7 +39,7 @@ async function main() {
                 extraMetadata: desktopMetadata,
                 artifactName: 'Typealot_${os}_${version}_${arch}.${ext}',
                 npmRebuild: false,
-                electronDist: target.useLocalElectron ? path.dirname(require('electron')) : undefined,
+                electronDist: target.useLocalElectron ? localElectronDist(require('electron'), target.platform) : undefined,
                 directories: {
                     app: snapshot,
                     output: path.resolve(process.env.TYPEALOT_DESKTOP_OUTPUT || path.join(release, 'desktop', target.output))

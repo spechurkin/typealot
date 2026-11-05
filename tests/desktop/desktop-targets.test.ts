@@ -1,10 +1,18 @@
 import {createRequire} from 'node:module';
 import {expect, it} from 'vitest';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
-const {desktopTarget} = require('../../scripts/desktop/desktop-targets.cjs');
+const {desktopTarget, localElectronDist} = require('../../scripts/desktop/desktop-targets.cjs');
 const {GenericProvider} = require('electron-updater/out/providers/GenericProvider.js');
 const {Arch} = require('electron-builder');
+
+it('passes the distribution containing Electron.app to the macOS packager', () => {
+    const distribution = path.resolve('node_modules/electron/dist');
+    expect(localElectronDist(path.join(distribution, 'Electron.app/Contents/MacOS/Electron'), 'darwin')).toBe(distribution);
+    expect(localElectronDist(path.join(distribution, 'electron.exe'), 'win32')).toBe(distribution);
+    expect(localElectronDist(path.join(distribution, 'electron'), 'linux')).toBe(distribution);
+});
 
 it.each([
     ['--win', '--ia32', 'win32', 'ia32', 'latest-ia32', ['nsis']],

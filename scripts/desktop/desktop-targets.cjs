@@ -1,4 +1,5 @@
 const {Arch, Platform} = require('electron-builder');
+const path = require('node:path');
 
 const platforms = {win32: Platform.WINDOWS, darwin: Platform.MAC, linux: Platform.LINUX};
 const supported = {win32: ['ia32', 'x64'], darwin: ['x64', 'arm64'], linux: ['x64', 'arm64']};
@@ -32,4 +33,9 @@ function desktopTarget(args, host = {platform: process.platform, arch: process.a
     };
 }
 
-module.exports = {desktopTarget};
+function localElectronDist(executable, platform) {
+    const directory = path.dirname(executable);
+    return platform === 'darwin' ? path.resolve(directory, '../../..') : directory;
+}
+
+module.exports = {desktopTarget, localElectronDist};
