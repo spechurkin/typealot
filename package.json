@@ -5,22 +5,21 @@
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
-    "icons:generate": "node scripts/generate-icons.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:i18n": "vitest run tests/i18n.test.ts tests/native-i18n.test.ts",
+    "test:i18n": "vitest run tests/locales/i18n.test.ts tests/locales/native-i18n.test.ts",
     "test:ui": "playwright test",
     "desktop": "npm run build && electron .",
     "android:sync": "npm run build && cap sync android",
     "android:add": "cap add android",
-    "android:prepare": "npm run android:sync && node scripts/prepare-android.mjs",
+    "android:prepare": "npm run android:sync && node scripts/android/prepare-android.mjs",
     "android:assets": "npm run build && cap copy android",
     "android:studio": "npm run android:prepare && cap open android",
-    "sync:server": "node scripts/sync-server.mjs",
-    "release:desktop": "npm run build && node scripts/desktop-release.cjs",
-    "release:server": "npm run build && node scripts/server-release.mjs"
+    "sync:server": "node server/sync-server.mjs",
+    "release:desktop": "npm run build && node scripts/desktop/desktop-release.cjs",
+    "release:server": "npm run build && node scripts/release/server-release.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",

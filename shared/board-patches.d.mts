@@ -1,4 +1,4 @@
-import type {Board} from '../src/model';
+import type {Board} from '../src/storage/model';
 
 export type BoardPatch = {
     nodes: { remove: string[]; upsert: unknown[] };

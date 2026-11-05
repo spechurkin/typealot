@@ -1,6 +1,6 @@
 import type {Schema} from '@tiptap/pm/model';
 import type * as Y from 'yjs';
-import type {Note} from '../src/model';
+import type {Note} from '../src/storage/model';
 
 export function canonical(value: unknown): string;
 

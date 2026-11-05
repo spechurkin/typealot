@@ -6,6 +6,7 @@ playwright-report/
 android/.gradle/
 android/local.properties
 android/app/build/
+android/app/debug/
 android/build/
 android/app/src/main/assets/public/
 android/app/src/main/assets/capacitor.config.json

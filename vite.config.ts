@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import {createRequire} from 'node:module';
 
 const packageInfo = createRequire(import.meta.url)('./package.json');
-const sshBrowser = createRequire(import.meta.url)('./scripts/ssh-browser.cjs');
+const sshBrowser = createRequire(import.meta.url)('./scripts/dev/ssh-browser.cjs');
 
 export default defineConfig({
     optimizeDeps: {entries: ['index.html']},

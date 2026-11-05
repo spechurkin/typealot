@@ -8,10 +8,19 @@ const quote = value => "'" + value.replace(/'/g, "'\\''") + "'";
 
 async function deploymentBundle() {
     const root = path.resolve(__dirname, '..'), files = {};
-    const add = async name => {
-        files[name] = (await readFile(path.join(root, name))).toString('base64');
+    const add = async (name, source = name) => {
+        let body;
+        try {
+            body = await readFile(path.join(root, source));
+        } catch (error) {
+            if (source === name || error.code !== 'ENOENT') throw error;
+            body = await readFile(path.join(root, name));
+        }
+        files[name] = body.toString('base64');
     };
-    await Promise.all(['scripts/sync-server.mjs', 'scripts/server-backups.mjs', 'scripts/realtime.mjs', 'scripts/server-update.mjs', 'scripts/update-gate.mjs', 'scripts/ssh-browser.cjs', 'electron/ssh-install.cjs'].map(add));
+    // Existing updaters and systemd units require these deployment paths.
+    await Promise.all(['sync-server', 'server-backups', 'realtime', 'server-update', 'update-gate'].map(name => add(`scripts/${name}.mjs`, `server/${name}.mjs`)));
+    await Promise.all(['scripts/dev/ssh-browser.cjs', 'electron/ssh-install.cjs'].map(name => add(name)));
     const walk = async directory => {
         for (const entry of await readdir(path.join(root, directory), {withFileTypes: true})) {
             const name = directory + '/' + entry.name;

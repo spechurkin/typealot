@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - run: node scripts/release-guard.mjs desktop validate
+      - run: node scripts/release/release-guard.mjs desktop validate
         if: github.event_name == 'push'
       - run: npm ci
       - run: npm run release:desktop -- --${{ matrix.flag }} --${{ matrix.arch }}
@@ -39,7 +39,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.MAC_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.CSC_KEY_PASSWORD || '' }}
       - name: Verify packaged macOS startup and saving
         if: matrix.platform == 'darwin'
-        run: node scripts/smoke-packaged-updates.mjs
+        run: node scripts/smoke/smoke-packaged-updates.mjs
         env:
           TYPEALOT_DESKTOP_EXECUTABLE: release/desktop/darwin-${{ matrix.arch }}/mac${{ matrix.arch == 'arm64' && '-arm64' || '' }}/Typealot.app/Contents/MacOS/Typealot
       - name: Verify Ubuntu menu registration
@@ -82,9 +82,9 @@ jobs:
           pattern: Typealot-release-*
           path: release/desktop
           merge-multiple: true
-      - run: node scripts/release-guard.mjs desktop publish
+      - run: node scripts/release/release-guard.mjs desktop publish
         id: release_guard
       - name: Publish numbered release and compatibility feed
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/publish-release.mjs desktop ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}
+        run: node scripts/release/publish-release.mjs desktop ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}
