@@ -66,7 +66,7 @@ test('desktop notification offers download, then installation after saving edits
     await expect(notice).toContainText('готов к установке');
     await page.getByLabel('Заголовок заметки').fill('Сохранить перед обновлением');
     await notice.getByRole('button', {name: 'Обновить и перезапустить'}).click();
-    expect(await page.evaluate(() => sessionStorage.getItem('installed'))).toBe('yes');
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('installed'))).toBe('yes');
     await page.reload();
     await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Сохранить перед обновлением');
 });

@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react';
 import {Capacitor, CapacitorHttp} from '@capacitor/core';
-import {newerVersion, releaseUrl, startUpdateChecks} from '../../shared/updates.mjs';
+import {newerVersion, releaseUrl, resolveManifestUrl, startUpdateChecks} from '../../shared/updates.mjs';
 import {t, useLanguage} from '../locales/i18n';
 import type {UpdateState} from '../platform/desktop';
 
@@ -34,8 +34,18 @@ export default function UpdateNotice({beforeInstall}: { beforeInstall: () => Pro
             if (native && !__UPDATE_MANIFEST__) return;
             let manifest;
             if (native) {
+                const request: typeof fetch = async input => {
+                    const result = await CapacitorHttp.get({
+                        url: String(input),
+                        connectTimeout: 20000,
+                        readTimeout: 20000,
+                        responseType: 'json'
+                    });
+                    return new Response(typeof result.data === 'string' ? result.data : JSON.stringify(result.data), {status: result.status});
+                };
+                const manifestUrl = await resolveManifestUrl(__UPDATE_MANIFEST__, 'android', 'apps.json', request);
                 const response = await CapacitorHttp.get({
-                    url: releaseUrl(__UPDATE_MANIFEST__),
+                    url: manifestUrl,
                     connectTimeout: 20000,
                     readTimeout: 20000,
                     responseType: 'json'

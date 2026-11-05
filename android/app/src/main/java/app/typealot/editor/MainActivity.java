@@ -4,7 +4,6 @@ import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.provider.Settings;
 import android.webkit.WebView;
 import androidx.appcompat.app.AlertDialog;
@@ -15,12 +14,7 @@ public class MainActivity extends BridgeActivity {
     @SuppressLint("WebViewApiAvailability")
     @Override
     protected void load() {
-        PackageInfo provider;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            provider = WebView.getCurrentWebViewPackage();
-        } else {
-            provider = null;
-        }
+        PackageInfo provider = WebView.getCurrentWebViewPackage();
         var settings = CapConfig.loadDefault(this);
         int webViewVersion = 0;
         if (provider != null && provider.versionName != null) {

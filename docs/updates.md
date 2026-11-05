@@ -30,7 +30,8 @@ You can also download the APK directly from [Releases](https://github.com/spechu
 Releases include the version in both the name and tag: **Android 1.0.1** (`android-1.0.1`),
 **Desktop 1.0.1** (`desktop-1.0.1`), and **Server 1.0.1** (`server-1.0.1`). Each version keeps its own downloads.
 In Obtainium, use the release-tag filter `^android-[0-9]+\.[0-9]+\.[0-9]+$` to select Android releases.
-The `*-latest` prereleases are compatibility feeds for automatic updates in existing installations.
+Automatic updates use numbered releases. Desktop uses GitHub's latest release, which is reserved for Desktop;
+Android and Server select the highest stable version with their respective tag prefix.
 
 ## Browser
 

@@ -23,7 +23,7 @@ test('English and Russian UI persist without translating user documents', async 
     await page.keyboard.insertText('/heading');
     await expect(page.getByLabel('Quick insert')).toContainText('Heading 2');
     await page.keyboard.press('Escape');
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Saved');
+    await expect(page.locator('.save-status')).toHaveText('Saved');
     await page.reload();
     await expect(page.getByLabel('Note title')).toHaveValue('Настройки');
     await page.getByRole('button', {name: 'Settings', exact: true}).click();
@@ -32,6 +32,8 @@ test('English and Russian UI persist without translating user documents', async 
     await expect(page.getByRole('heading', {name: 'Настройки', exact: true})).toBeVisible();
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+    await expect(page.getByRole('heading', {name: 'Настройки', exact: true})).toBeVisible();
+    await page.getByRole('navigation').getByRole('button', {name: 'Заметки', exact: true}).click();
     await expect(page.getByLabel('Заголовок заметки')).toHaveValue('Настройки');
 });
 
@@ -48,5 +50,5 @@ test('key-like user titles remain literal and dynamic folder labels use paramete
     await expect(page.getByLabel('Folder actions: nav.settings', {exact: true})).toBeVisible();
     await expect(page.getByLabel('Create note in nav.settings', {exact: true})).toBeVisible();
     await page.getByLabel('Folder actions: nav.settings', {exact: true}).click();
-    await expect(page.getByRole('dialog')).toContainText('Move folder');
+    await expect(page.getByRole('button', {name: 'Move folder', exact: true})).toBeVisible();
 });

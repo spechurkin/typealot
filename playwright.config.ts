@@ -1,5 +1,8 @@
 import {defineConfig} from '@playwright/test';
 
+// Playwright forces color in workers and its web server; avoid conflicting inherited flags.
+delete process.env.NO_COLOR;
+
 const port = Number(process.env.TYPEALOT_TEST_PORT || (process.env.TYPEALOT_TEST_PORT = String(20000 + process.pid % 20000)));
 const origin = `http://127.0.0.1:${port}`;
 

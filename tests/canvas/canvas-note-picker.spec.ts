@@ -4,7 +4,7 @@ for (const mobile of [false, true]) {
     test(`canvas note picker keeps the folder tree beside its button (${mobile ? 'mobile' : 'desktop'})`, async ({page}) => {
         if (mobile) await page.setViewportSize({width: 390, height: 844});
         await page.goto('/');
-        await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+        await expect(page.locator('.save-status')).toHaveText('Сохранено');
         await page.evaluate(async () => {
             const path = '/src/storage/storage.ts';
             const {loadWorkspace, saveWorkspace} = await import(path);
@@ -20,7 +20,6 @@ for (const mobile of [false, true]) {
         await page.reload();
         if (mobile) await page.getByRole('button', {name: 'Открыть навигацию', exact: true}).click();
         await page.getByRole('button', {name: 'Холсты', exact: true}).click();
-        if (mobile) await page.getByRole('button', {name: 'Первый холст', exact: true}).click();
         const trigger = page.getByRole('button', {name: 'Карточка заметки', exact: true});
         const picker = page.getByRole('region', {name: 'Карточка заметки', exact: true});
         await trigger.click();

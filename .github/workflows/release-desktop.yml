@@ -84,7 +84,8 @@ jobs:
           merge-multiple: true
       - run: node scripts/release/release-guard.mjs desktop publish
         id: release_guard
-      - name: Publish numbered release and compatibility feed
+      - name: Publish numbered release
+        if: steps.release_guard.outputs.publish != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish-release.mjs desktop ${{ steps.release_guard.outputs.publish == 'false' && '--reuse-published' || '' }}
+        run: node scripts/release/publish-release.mjs desktop

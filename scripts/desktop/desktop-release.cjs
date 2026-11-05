@@ -11,7 +11,15 @@ async function main() {
     if (!process.env.CSC_LINK?.trim()) delete process.env.CSC_LINK;
     const target = desktopTarget(process.argv.slice(2));
     const {releaseUrl} = await import('../../shared/updates.mjs');
-    const url = releaseUrl(process.env.TYPEALOT_DESKTOP_UPDATE_URL || 'https://github.com/spechurkin/typealot/releases/download/desktop-latest/');
+    const publish = process.env.TYPEALOT_DESKTOP_UPDATE_URL
+        ? {provider: 'generic', url: releaseUrl(process.env.TYPEALOT_DESKTOP_UPDATE_URL), channel: target.channel}
+        : {
+            provider: 'github',
+            owner: 'spechurkin',
+            repo: 'typealot',
+            tagNamePrefix: 'desktop-',
+            channel: target.channel
+        };
     const root = path.resolve(__dirname, '../..');
     const release = path.join(root, 'release');
     await fs.mkdir(release, {recursive: true});
@@ -31,7 +39,7 @@ async function main() {
                 extraMetadata: desktopMetadata,
                 artifactName: 'Typealot_${os}_${version}_${arch}.${ext}',
                 npmRebuild: false,
-                electronDist: target.useLocalElectron ? path.join(path.dirname(require.resolve('electron/package.json')), 'dist') : undefined,
+                electronDist: target.useLocalElectron ? path.dirname(require('electron')) : undefined,
                 directories: {
                     app: snapshot,
                     output: path.resolve(process.env.TYPEALOT_DESKTOP_OUTPUT || path.join(release, 'desktop', target.output))
@@ -68,7 +76,7 @@ async function main() {
                     maintainer: 'Typealot (https://github.com/spechurkin/typealot)',
                     packageCategory: 'editors'
                 },
-                publish: [{provider: 'generic', url, channel: target.channel}]
+                publish: [publish]
             }, publish: 'never'
         });
     } finally {

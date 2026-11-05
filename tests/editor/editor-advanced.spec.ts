@@ -36,7 +36,7 @@ test('image context, allowed formatting on paste and persisted image layout', as
     await expect(image).toHaveAttribute('alt', 'Проверочное изображение');
     await expect(image).toHaveAttribute('data-width', '50');
     await expect(image).toHaveAttribute('data-alignment', 'right');
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.reload();
     await expect(doc.locator('img')).toHaveAttribute('data-width', '50');
 });
@@ -83,9 +83,9 @@ test('official YouTube API error produces a useful fallback and retains original
     await expect(page.getByRole('link', {name: 'Открыть оригинал'})).toBeVisible();
 });
 test('restoring an automatic backup preserves a checkpoint of the current workspace', async ({page}) => {
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.getByLabel('Заголовок заметки').fill('Перед восстановлением');
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.getByRole('button', {name: 'Настройки', exact: true}).click();
     await page.getByRole('button', {name: 'Показать локальные копии', exact: true}).click();
     await page.locator('.backup-list').getByRole('button', {name: 'Восстановить', exact: true}).first().click();

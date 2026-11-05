@@ -45,7 +45,8 @@ async function deploymentBundle() {
         engines: {node: '>=20.19.0'},
         dependencies
     })).toString('base64');
-    let releaseConfig = {serverManifest: 'https://github.com/spechurkin/typealot/releases/download/server-latest/server.json'};
+    const {RELEASES_API} = await import('../shared/updates.mjs');
+    let releaseConfig = {serverManifest: RELEASES_API};
     try {
         releaseConfig = JSON.parse(await readFile(path.join(root, 'release-config.json'), 'utf8'));
     } catch (error) {

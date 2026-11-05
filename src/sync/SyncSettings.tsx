@@ -355,7 +355,8 @@ export function useWorkspaceSync(workspace: Workspace | null, replace: Dispatch<
             </div>
             {state && <p role="status">{t(state)}</p>}{error &&
                 <p role="alert" className="error">{errorText(error)}</p>}
-            <ServerAdmin enabled={!!config.administration} toggle={administration => configure({administration})}/>
+            <ServerAdmin enabled={!!config.administration} disabled={!ready}
+                         toggle={administration => configure({administration})}/>
         </section>
         <section id="settings-backups" tabIndex={-1} aria-labelledby="settings-backups-title"><h2
             id="settings-backups-title">{t('sync.automaticBackups')}</h2><p>{t('backups.description')}</p>

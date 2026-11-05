@@ -469,13 +469,18 @@ function LineInsert({editor, insert}: { editor: Editor; insert: (kind: string) =
             setTop(rect.top - root.getBoundingClientRect().top + (rect.bottom - rect.top) / 2);
         };
         editor.on('transaction', position);
-        const observer = new ResizeObserver(position);
+        let frame = 0;
+        const observer = new ResizeObserver(() => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(position);
+        });
         observer.observe(editor.view.dom);
         window.addEventListener('resize', position);
         position();
         return () => {
             editor.off('transaction', position);
             observer.disconnect();
+            cancelAnimationFrame(frame);
             window.removeEventListener('resize', position);
         };
     }, [editor]);
@@ -528,10 +533,19 @@ export default function NoteEditor({note, workspace, update, readOnly, register,
             el.style.height = 'auto';
             el.style.height = `${el.scrollHeight}px`;
         };
-        const observer = new ResizeObserver(resize);
+        let width = 0, frame = 0;
+        const observer = new ResizeObserver(([entry]) => {
+            if (entry.contentRect.width === width) return;
+            width = entry.contentRect.width;
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(resize);
+        });
         observer.observe(el.parentElement!);
         resize();
-        return () => observer.disconnect();
+        return () => {
+            observer.disconnect();
+            cancelAnimationFrame(frame);
+        };
     }, [note.id]);
     const upload = useRef<HTMLInputElement>(null);
     const insertRef = useRef<(k: string) => void>(() => {
@@ -539,7 +553,7 @@ export default function NoteEditor({note, workspace, update, readOnly, register,
     const extensions = [NoteDropPreview, StarterKit.configure({
         undoRedo: false,
         heading: {levels: [2, 3]},
-        link: {openOnClick: false, autolink: true, protocols: ['https', 'http', 'mailto']}
+        link: {openOnClick: false, autolink: true}
     }), Placeholder.configure({placeholder: t('editor.placeholder')}), TextAlign.configure({types: ['heading', 'paragraph']}), TextStyle, Color, FontSize, Highlight.configure({multicolor: true}), EditorImage.configure({allowBase64: true}), Table.configure({resizable: true}), TableRow, TableCell, TableHeader, TaskList, TaskItem.configure({nested: true}), MediaNode, AttachmentNode, Callout, Toc, NoteLink,
         Hashtag, slashExtension([
             {

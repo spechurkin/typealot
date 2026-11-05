@@ -90,6 +90,9 @@ test('both players load immediately, paste offers choice, canvas previews have n
     }));
     const doc = page.getByLabel('Содержимое заметки');
     await doc.click();
+    await page.keyboard.press('Control+Home');
+    await page.keyboard.press('Control+Shift+End');
+    await page.keyboard.press('Backspace');
     await page.keyboard.press('Control+End');
     await page.keyboard.press('Enter');
     await doc.evaluate(el => {
@@ -107,7 +110,6 @@ test('both players load immediately, paste offers choice, canvas previews have n
     await expect(page.locator('iframe[title="YouTube"]')).toHaveAttribute('src', /autoplay=0/);
     await expect(page.locator('.media-placeholder')).toHaveCount(0);
     await expect(page.getByRole('link', {name: 'Открыть оригинал'})).toHaveAttribute('href', /t=90s/);
-    const ribbon = page.getByRole('toolbar', {name: 'Форматирование', exact: true});
     await doc.locator('p').last().click();
     await page.keyboard.press('Control+End');
     await page.keyboard.press('Enter');
@@ -118,6 +120,7 @@ test('both players load immediately, paste offers choice, canvas previews have n
     await expect(page.locator('iframe[title="Spotify"]')).toHaveAttribute('loading', 'eager');
     await expect(page.locator('.media-caption a')).toHaveCount(2);
     await expect(page.locator('.media-block')).not.toContainText([/track|playlist|video/]);
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.getByRole('button', {name: 'Холсты', exact: true}).click();
     await expect(page.locator('.canvas-area')).toBeVisible();
     await expect(page.locator('iframe')).toHaveCount(0);
@@ -170,9 +173,12 @@ test('canvas objects, drawing, selection, layers and zoom', async ({page}) => {
     await expect(page.locator('.layer')).toHaveCount(4);
 });
 test('responsive layouts across widths and both themes', async ({page}) => {
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
     for (const width of [1440, 1024, 820, 760, 390, 360]) {
         await page.setViewportSize({width, height: 850});
         await expect(page.getByLabel('Заголовок заметки')).toBeVisible();
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
         if (width === 390) await page.screenshot({path: 'test-results/dark-mobile.png'});
     }
@@ -182,4 +188,5 @@ test('responsive layouts across widths and both themes', async ({page}) => {
     await page.getByLabel('Тема', {exact: true}).selectOption('light');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
     await page.screenshot({path: 'test-results/light-mobile.png'});
+    expect(errors).toEqual([]);
 });

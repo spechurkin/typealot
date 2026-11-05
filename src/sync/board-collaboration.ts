@@ -98,11 +98,18 @@ export function useBoardCollaboration(board: Board, workspace: Workspace, update
                     const before = baseline.current, local = current.current;
                     const patch = diffBoard(before, local);
                     const remote = message.type === 'board-denied' || !patch ? message.board : applyBoardPatch(message.board, patch);
-                    const selected = new Map(local.nodes.map(node => [node.id, node.selected]));
+                    const localNodes = new Map(local.nodes.map(node => [node.id, node]));
                     const next = {
                         ...remote,
                         viewport: local.viewport,
-                        nodes: remote.nodes.map(node => ({...node, selected: selected.get(node.id) || false}))
+                        nodes: remote.nodes.map(node => {
+                            const previous = localNodes.get(node.id);
+                            return {
+                                ...node,
+                                selected: previous?.selected || false,
+                                ...(previous?.measured ? {measured: previous.measured} : {})
+                            };
+                        })
                     };
                     baseline.current = message.board;
                     current.current = next;

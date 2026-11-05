@@ -4,8 +4,8 @@ const config: CapacitorConfig = {
     appId: 'app.typealot.editor',
     appName: 'Typealot',
     webDir: 'dist',
-    android: {minWebViewVersion: 109, adjustMarginsForEdgeToEdge: 'auto', allowMixedContent: true},
+    android: {minWebViewVersion: 109, allowMixedContent: true},
     server: {hostname: 'app.typealot.editor', androidScheme: 'https'},
-    plugins: {CapacitorHttp: {enabled: true}}
+    plugins: {CapacitorHttp: {enabled: true}, SystemBars: {insetsHandling: 'native'}}
 };
 export default config;

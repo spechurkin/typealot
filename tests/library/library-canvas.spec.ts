@@ -22,7 +22,7 @@ test('library files survive document save and HTML export is readable', async ({
     await page.getByRole('button', {name: 'Из библиотеки вложений', exact: true}).click();
     await page.getByRole('button', {name: 'Файл Материал.txt', exact: true}).click();
     await expect(page.locator('.document-attachment')).toContainText('Материал.txt');
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.reload();
     await expect(page.locator('.document-attachment')).toContainText('Материал.txt');
     const downloading = page.waitForEvent('download');
@@ -125,13 +125,17 @@ test('uploaded images become resized JPEGs and renamed files download with their
     const downloaded = await downloading;
     expect(downloaded.suggestedFilename()).toBe('Обложка.jpg');
     expect((await readFile((await downloaded.path())!)).subarray(0, 3)).toEqual(Buffer.from([255, 216, 255]));
-    await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+    await expect(page.locator('.save-status')).toHaveText('Сохранено');
     await page.reload();
     await page.getByRole('button', {name: 'Вложения', exact: true}).click();
     await expect(page.locator('.attachment-list')).toContainText('Обложка.jpg');
 });
 
 test('renaming a library document updates downloads from an existing note', async ({page}) => {
+    const selectionWarnings: string[] = [];
+    page.on('console', message => {
+        if (message.type() === 'warning' && message.text().includes('TextSelection')) selectionWarnings.push(message.text());
+    });
     await page.goto('/');
     await expect(page.getByLabel('Заголовок заметки')).toBeVisible();
     await page.getByRole('button', {name: 'Вложения', exact: true}).click();
@@ -163,4 +167,5 @@ test('renaming a library document updates downloads from an existing note', asyn
     await page.getByLabel('Действия', {exact: true}).click();
     await page.getByRole('button', {name: 'Экспорт заметки (HTML)', exact: true}).click();
     expect(await readFile((await (await exporting).path())!, 'utf8')).toContain('download="New.txt"');
+    expect(selectionWarnings).toEqual([]);
 });

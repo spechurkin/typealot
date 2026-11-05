@@ -172,7 +172,7 @@ test('only an incompatible edit of the same file asks to load the server version
         await page.context().setOffline(false);
     }
     const dialog = page.getByRole('dialog');
-    await expect(dialog).toContainText('Одновременно изменён один файл', {timeout: 12000});
+    await expect(dialog).toContainText('Конфликт изменений файлов', {timeout: 12000});
     await expect(dialog.locator('li')).toHaveCount(1);
     await dialog.getByRole('button', {name: 'Загрузить версию файла с сервера', exact: true}).click();
     await expect(dialog).toHaveCount(0);
@@ -206,6 +206,7 @@ test('canvas pointers, exclusive object editing, server lock enforcement and not
         await expect(first).not.toHaveAttribute('readonly');
         await first.fill('Alice owns this object');
         await expect(peer).toHaveValue('Alice owns this object');
+        await expect(peer).toBeVisible();
         await expect(peer).toHaveAttribute('readonly');
         await expect(other.locator('.block-edit-owner')).toContainText('Alpha');
         await peer.click();

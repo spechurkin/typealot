@@ -32,7 +32,7 @@ it('uses stable keys and substitutes user data only in named parameters', () => 
     expect(errorText(new LocalizedError('errors.syncWriteHttp', {status: 503}))).toBe('Не удалось отправить изменения: HTTP 503');
 });
 
-function checkTranslationTypes() {
+export function checkTranslationTypes() {
     // @ts-expect-error UI text is not a translation key.
     t('Настройки');
     // @ts-expect-error Unknown keys must fail the TypeScript build.

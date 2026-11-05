@@ -12,7 +12,11 @@ import {syncUrl} from '../sync/sync';
 import SshInstaller from './SshInstaller';
 
 type Config = { maxUploadMb: number; backupCount: number; backupRetentionMonths: number; workspaceExists: boolean };
-export default function ServerAdmin({enabled, toggle}: { enabled: boolean; toggle: (enabled: boolean) => void }) {
+export default function ServerAdmin({enabled, disabled = false, toggle}: {
+    enabled: boolean;
+    disabled?: boolean;
+    toggle: (enabled: boolean) => void
+}) {
     useLanguage();
     const [host, setHost] = useState(''), [port, setPort] = useState('80'), [connected, setConnected] = useState(''), [config, setConfig] = useState<Config | null>(null), [error, setError] = useState<DisplayError>(''), [message, setMessage] = useState<TranslationKey | ''>(''), [busy, setBusy] = useState(false);
     const request = async (path: string, method: string, body?: unknown, origin = connected) => {
@@ -47,6 +51,7 @@ export default function ServerAdmin({enabled, toggle}: { enabled: boolean; toggl
         }
     };
     return <div className="server-admin"><label className="check-label"><input type="checkbox" checked={enabled}
+                                                                               disabled={disabled}
                                                                                onChange={e => {
                                                                                    toggle(e.target.checked);
                                                                                    if (!e.target.checked) {

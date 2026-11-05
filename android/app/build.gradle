@@ -32,33 +32,33 @@ def validateReleaseSigning = tasks.register('validateReleaseSigning') {
 }
 
 android {
-    namespace "app.typealot.editor"
+    namespace = "app.typealot.editor"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.typealot.editor"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode Integer.parseInt(providers.gradleProperty("typealotVersionCode").getOrElse("1"))
-        versionName new groovy.json.JsonSlurper().parse(rootProject.file("../package.json")).version
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        aaptOptions {
+        applicationId = "app.typealot.editor"
+        minSdk = rootProject.ext.minSdkVersion
+        targetSdk = rootProject.ext.targetSdkVersion
+        versionCode = Integer.parseInt(providers.gradleProperty("typealotVersionCode").getOrElse("1"))
+        versionName = new groovy.json.JsonSlurper().parse(rootProject.file("../package.json")).version
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    androidResources {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
-        }
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
     signingConfigs {
         release {
-            storeFile releaseKeystore
-            storePassword releaseSigning.storePassword
-            keyAlias releaseSigning.keyAlias
-            keyPassword releaseSigning.keyPassword
+            storeFile = releaseKeystore
+            storePassword = releaseSigning.storePassword
+            keyAlias = releaseSigning.keyAlias
+            keyPassword = releaseSigning.keyPassword
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled false
+            signingConfig = signingConfigs.release
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -67,12 +67,6 @@ android {
 tasks.configureEach {
     if (name == 'preReleaseBuild' || name == 'validateSigningRelease') {
         dependsOn validateReleaseSigning
-    }
-}
-
-repositories {
-    flatDir{
-        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
 
@@ -94,7 +88,7 @@ def typealotRoot = rootProject.projectDir.parentFile
 def prepareWebAssets = tasks.register('prepareWebAssets', Exec) {
     workingDir typealotRoot
     inputs.files(fileTree(new File(typealotRoot, 'src')), fileTree(new File(typealotRoot, 'shared')), fileTree(new File(typealotRoot, 'public')), new File(typealotRoot, 'index.html'), new File(typealotRoot, 'package.json'), new File(typealotRoot, 'vite.config.ts'), new File(typealotRoot, 'package-lock.json'), new File(typealotRoot, 'capacitor.config.ts'))
-    inputs.property('appUpdateManifest', System.getenv('TYPEALOT_APP_UPDATE_URL') ?: 'https://github.com/spechurkin/typealot/releases/download/android-latest/apps.json')
+    inputs.property('appUpdateManifest', System.getenv('TYPEALOT_APP_UPDATE_URL') ?: 'https://api.github.com/repos/spechurkin/typealot/releases')
     outputs.dir(new File(projectDir, 'src/main/assets/public'))
     if (System.getProperty('os.name').toLowerCase().contains('windows')) {
         commandLine 'cmd', '/c', 'npm', 'run', 'android:assets'

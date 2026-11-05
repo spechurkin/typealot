@@ -4,7 +4,7 @@ import {gunzipSync} from 'node:zlib';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {newerVersion, releaseUrl} from '../shared/updates.mjs';
+import {newerVersion, releaseUrl, resolveManifestUrl} from '../shared/updates.mjs';
 import {SERVER_CHECK_INTERVAL} from './update-gate.mjs';
 
 export function decodeBundle(body) {
@@ -99,7 +99,8 @@ export async function updateServer(options = {}) {
             const due = state.nextCheckAt || now();
             state.nextCheckAt = due + (Math.floor((now() - due) / SERVER_CHECK_INTERVAL) + 1) * SERVER_CHECK_INTERVAL;
             await save();
-            const manifest = JSON.parse(await download(config.serverManifest, 65536));
+            const manifestUrl = await resolveManifestUrl(config.serverManifest, 'server', 'server.json', async url => new Response(await download(String(url), 4 * 1024 * 1024)));
+            const manifest = JSON.parse(await download(manifestUrl, 65536));
             state.pending = newerVersion(manifest.version, current.version) ? manifest : null;
             await save();
         }

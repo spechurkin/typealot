@@ -2,6 +2,11 @@ import {expect, test} from '@playwright/test';
 
 for (const aspect of [2, .5]) {
     test(`image size buttons work before and after handle resizing (aspect ${aspect})`, async ({page}) => {
+        const errors: string[] = [];
+        await page.exposeFunction('recordBrowserError', (message: string) => errors.push(message));
+        await page.addInitScript(() => {
+            window.addEventListener('error', event => (window as any).recordBrowserError(event.message));
+        });
         await page.goto('/');
         await expect(page.getByRole('status', {name: 'Сохранение на этом устройстве'})).toHaveText('Сохранено');
         await page.evaluate(async aspect => {
@@ -66,5 +71,7 @@ for (const aspect of [2, .5]) {
         await larger.click();
         await expectSize(minimum.width + 40, minimum.height * (minimum.width + 40) / minimum.width);
         await expect(page.locator('.react-flow__node[data-id="card"]')).toHaveCSS('width', '300px');
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        expect(errors).toEqual([]);
     });
 }

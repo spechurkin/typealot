@@ -17,7 +17,7 @@ for (const mobile of [false, true]) {
     test(`note link folders expand independently and select a nested note (${mobile ? 'mobile' : 'desktop'})`, async ({page}) => {
         if (mobile) await page.setViewportSize({width: 390, height: 844});
         await page.goto('/');
-        await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+        await expect(page.locator('.save-status')).toHaveText('Сохранено');
         await page.evaluate(async () => {
             const modulePath = '/src/storage/storage.ts';
             const {loadWorkspace, saveWorkspace} = await import(modulePath);
@@ -64,7 +64,7 @@ for (const mobile of [false, true]) {
         await expect(dialog).toHaveCount(0);
         const link = page.getByLabel('Содержимое заметки').locator('a[data-note-id="target"]');
         await expect(link).toHaveText('План проекта');
-        await expect(page.locator('.header-actions [role=status]')).toHaveText('Сохранено');
+        await expect(page.locator('.save-status')).toHaveText('Сохранено');
         await page.reload();
         await link.click();
         await expect(page.getByLabel('Заголовок заметки')).toHaveValue('План проекта');

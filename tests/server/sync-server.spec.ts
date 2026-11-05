@@ -34,11 +34,13 @@ test('pending desktop cache read cannot be overwritten by empty initial settings
     await page.getByRole('button', {name: 'Настройки', exact: true}).click();
     await expect(page.getByLabel('IP или домен сервера')).toBeDisabled();
     await expect(page.getByLabel('Синхронизировать автоматически')).toBeDisabled();
+    await expect(page.getByLabel('Администрирование', {exact: true})).toBeDisabled();
     expect(await page.evaluate(() => (window as any).cacheWrites)).toEqual([]);
     await page.evaluate(() => (window as any).releaseSyncCache());
     await expect(page.getByLabel('IP или домен сервера')).toHaveValue('https://saved.example');
     await expect(page.getByLabel('Синхронизировать автоматически')).not.toBeChecked();
     await expect(page.getByLabel('IP или домен сервера')).toBeEnabled();
+    await expect(page.getByLabel('Администрирование', {exact: true})).toBeEnabled();
     expect(await page.evaluate(() => (window as any).cacheWrites)).toEqual([]);
 });
 
@@ -72,8 +74,9 @@ const serverPort = Number(process.env.TYPEALOT_TEST_PORT || '30000') + 1;
 
 const origin = `http://127.0.0.1:${serverPort}`;
 let server: ChildProcess;
-const serverDirectory = path.join(process.cwd(), 'test-results', `sync-server-${Date.now()}`);
-test.beforeAll(async () => {
+let serverDirectory: string;
+test.beforeEach(async () => {
+    serverDirectory = path.join(process.cwd(), 'test-results', `sync-server-${process.pid}-${Date.now()}`);
     await mkdir(path.join(serverDirectory, 'backups'), {recursive: true});
     await writeFile(path.join(serverDirectory, 'backups', '1-expired.json'), 'expired');
     await writeFile(path.join(serverDirectory, 'server-config.json'), JSON.stringify({
@@ -91,7 +94,13 @@ test.beforeAll(async () => {
         server.once('exit', code => reject(Error(`Server stopped: ${code}`)));
     });
 });
-test.afterAll(() => server?.kill());
+test.afterEach(async () => {
+    if (!server || server.exitCode !== null) return;
+    await new Promise<void>(resolve => {
+        server.once('exit', () => resolve());
+        server.kill();
+    });
+});
 test('server migrates retention, prunes at startup and on settings save, and does not back up each write', async ({request}) => {
     const dir = path.join(serverDirectory, 'backups');
     expect(await readdir(dir)).toEqual([]);
@@ -155,6 +164,7 @@ test('address-only admin, synchronization and conflict resolution', async ({page
     const second = await browser.newContext({storageState: await page.context().storageState()});
     const other = await second.newPage();
     await other.goto('/');
+    await other.getByRole('navigation').getByRole('button', {name: 'Заметки', exact: true}).click();
     await expect(other.getByLabel('Заголовок заметки')).toBeVisible();
     await other.getByLabel('Заголовок заметки').fill('Локальная вторая версия');
     await other.getByRole('button', {name: 'Настройки', exact: true}).click();
@@ -190,7 +200,7 @@ test('reopening a stale device must download deletions before sending any local 
     old.boards[0].nodes.push({...structuredClone(old.boards[0].nodes[0]), id: 'removed-object'});
     let read = await request.get(`${origin}/workspace`);
     expect((await request.put(`${origin}/workspace`, {
-        headers: {'If-Match': read.headers().etag}, data: old
+        headers: read.ok() ? {'If-Match': read.headers().etag} : {'If-None-Match': '*'}, data: old
     })).ok()).toBe(true);
     await page.goto('/');
     await page.getByRole('button', {name: 'Настройки', exact: true}).click();
@@ -246,6 +256,7 @@ test('reopening a stale device must download deletions before sending any local 
     });
     await page.reload();
     await started;
+    await page.getByRole('navigation').getByRole('button', {name: 'Заметки', exact: true}).click();
     await page.getByLabel('Заголовок заметки').fill('Stale edit while loading');
     expect(writes).toEqual([]);
     release();
@@ -443,8 +454,7 @@ test('sync address survives reload encrypted, while legacy credentials and admin
     expect(cached.ciphertext).toBeTruthy();
     expect(JSON.stringify(cached)).not.toContain('127.0.0.1');
     await page.reload();
-    await expect(page.getByLabel('Заголовок заметки')).toBeVisible();
-    await page.getByRole('button', {name: 'Настройки', exact: true}).click();
+    await expect(page.getByRole('heading', {name: 'Настройки', exact: true})).toBeVisible();
     await expect(page.getByLabel('IP или домен сервера')).toHaveValue(`127.0.0.1:${serverPort}`);
     await expect(page.getByLabel('Синхронизировать автоматически')).not.toBeChecked();
     await expect(page.getByLabel('Администрирование', {exact: true})).not.toBeChecked();

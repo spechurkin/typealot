@@ -2,8 +2,6 @@
 <resources>
     <string name="app_name" translatable="false">Typealot</string>
     <string name="title_activity_main" translatable="false">Typealot</string>
-    <string name="package_name" translatable="false">app.typealot.editor</string>
-    <string name="custom_url_scheme" translatable="false">app.typealot.editor</string>
     <string name="webview_update_title">Обновите Android System WebView</string>
     <string name="webview_update_message">Для редактора нужен Android System WebView %1$d или новее. Обновите системный
         WebView через магазин приложений и снова откройте Typealot. Ваши заметки сохранятся.
